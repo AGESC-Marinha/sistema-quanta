@@ -19,7 +19,7 @@ const supabaseAnonKey =
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-const TABELA = 'gestao_condominios';
+const TABELA = 'condominios';
 const VIEW = 'view_gestao_condominios';
 
 const emptyForm = {

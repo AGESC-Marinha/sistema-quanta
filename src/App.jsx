@@ -1,198 +1,304 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { 
-  Building2, MapPin, Users, DollarSign, Trash2, 
-  LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle 
-} from 'lucide-react';
 
 const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseAnonKey =
+  import.meta.env?.VITE_SUPABASE_ANON_KEY ||
+  process.env.REACT_APP_SUPABASE_ANON_KEY;
+
+if (!supabaseAnonKey) {
+  throw new Error(
+    'Chave anon do Supabase não configurada. Defina VITE_SUPABASE_ANON_KEY (Vite) ou REACT_APP_SUPABASE_ANON_KEY (CRA).'
+  );
+}
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+const calcularTaxaUnitaria = (totalAPagar, areaTotal) => {
+  const divisor = areaTotal * 0.905;
+  if (!divisor || divisor === 0) return 0;
+  return Number((totalAPagar / divisor).toFixed(4));
+};
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [condominios, setCondominios] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({ nome: '', endereco: '', qtd_pnr: '', qtd_civis: '', despesa_estimada: '' });
 
-  useEffect(() => { fetchCondominios(); }, []);
+  const [form, setForm] = useState({
+    nome: '',
+    cnpj: '',
+    total_a_pagar: '',
+    area_total: '',
+  });
 
-  async function fetchCondominios() {
+  const fetchCondominios = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.from('condominios').select('*').order('nome');
+      const { data, error } = await supabase
+        .from('condominios')
+        .select('*')
+        .order('created_at', { ascending: false });
+
       if (error) throw error;
       setCondominios(data || []);
     } catch (err) {
-      console.error(err);
+      console.error('Erro ao buscar condomínios:', err);
+      alert('Erro ao buscar condomínios: ' + err.message);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function handleSubmit(e) {
+  useEffect(() => {
+    fetchCondominios();
+  }, []);
+
+  const resumo = useMemo(() => {
+    const totalCondominios = condominios.length;
+    const areaTotal = condominios.reduce((acc, c) => acc + Number(c.area_total || 0), 0);
+    const valorTotal = condominios.reduce((acc, c) => acc + Number(c.total_a_pagar || 0), 0);
+    const taxaMedia =
+      totalCondominios > 0
+        ? Number((condominios.reduce((acc, c) => acc + Number(c.taxa_unitária || 0), 0) / totalCondominios).toFixed(4))
+        : 0;
+    return { totalCondominios, areaTotal, valorTotal, taxaMedia };
+  }, [condominios]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const resetForm = () => {
+    setForm({ nome: '', cnpj: '', total_a_pagar: '', area_total: '' });
+    setEditingId(null);
+  };
+
+  const handleEdit = (cond) => {
+    setEditingId(cond.id);
+    setForm({
+      nome: cond.nome || '',
+      cnpj: cond.cnpj || '',
+      total_a_pagar: cond.total_a_pagar ?? '',
+      area_total: cond.area_total ?? '',
+    });
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Tem certeza que deseja excluir este condomínio?')) return;
+
+    try {
+      setLoading(true);
+      const { error } = await supabase.from('condominios').delete().eq('id', id);
+      if (error) throw error;
+      await fetchCondominios();
+    } catch (err) {
+      console.error('Erro ao excluir:', err);
+      alert('Erro ao excluir: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
+
+    const totalAPagar = parseFloat(form.total_a_pagar) || 0;
+    const areaTotal = parseFloat(form.area_total) || 0;
+    const taxaUnitaria = calcularTaxaUnitaria(totalAPagar, areaTotal);
+
     const payload = {
-      nome: form.nome,
-      endereco: form.endereco,
-      qtd_pnr: Number(form.qtd_pnr),
-      qtd_civis: Number(form.qtd_civis),
-      despesa_estimada: Number(form.despesa_estimada)
+      nome: form.nome.trim(),
+      cnpj: form.cnpj.trim(),
+      total_a_pagar: totalAPagar,
+      area_total: areaTotal,
+      taxa_unitária: taxaUnitaria,
     };
 
     try {
+      setLoading(true);
+
       if (editingId) {
-        // Lógica de ATUALIZAÇÃO
-        const { error } = await supabase.from('condominios').update(payload).eq('id', editingId);
+        const { data, error } = await supabase
+          .from('condominios')
+          .update(payload)
+          .eq('id', editingId)
+          .select();
+
         if (error) throw error;
-        setEditingId(null);
-        alert('Condomínio atualizado com sucesso!');
+        console.log('Update realizado com sucesso:', data);
       } else {
-        // Lógica de NOVO CADASTRO
         const { error } = await supabase.from('condominios').insert([payload]);
         if (error) throw error;
-        alert('Condomínio cadastrado com sucesso!');
       }
-      
-      setForm({ nome: '', endereco: '', qtd_pnr: '', qtd_civis: '', despesa_estimada: '' });
-      fetchCondominios();
+
+      await fetchCondominios();
+      resetForm();
     } catch (err) {
-      alert('Erro na operação: ' + err.message);
+      console.error('Erro ao salvar condomínio:', err);
+      alert('Erro ao salvar: ' + err.message);
+    } finally {
+      setLoading(false);
     }
-  }
-
-  function handleEdit(c) {
-    setEditingId(c.id);
-    setForm({ 
-      nome: c.nome, 
-      endereco: c.endereco || '', 
-      qtd_pnr: c.qtd_pnr, 
-      qtd_civis: c.qtd_civis, 
-      despesa_estimada: c.despesa_estimada 
-    });
-    setActiveTab('gerenciar');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setForm({ nome: '', endereco: '', qtd_pnr: '', qtd_civis: '', despesa_estimada: '' });
-  }
-
-  async function handleDelete(id) {
-    if (!confirm('Tem certeza que deseja excluir este condomínio?')) return;
-    try {
-      const { error } = await supabase.from('condominios').delete().eq('id', id);
-      if (error) throw error;
-      fetchCondominios();
-    } catch (err) {
-      alert('Erro ao excluir: ' + err.message);
-    }
-  }
-
-  const calcularTaxa = (item) => {
-    const totalMoradores = (item.qtd_pnr || 0) + (item.qtd_civis || 0);
-    if (totalMoradores === 0) return 0;
-    return (item.despesa_estimada / totalMoradores) / 0.905;
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      <header className="bg-blue-900 text-white p-6 shadow-xl">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="bg-white/10 p-2 rounded-lg"><Building2 size={32} /></div>
-            <div>
-              <h1 className="text-2xl font-black tracking-tight">SISTEMA QUANTA</h1>
-              <p className="text-blue-200 text-xs font-bold uppercase tracking-widest">Gestão AGESC - Módulo 1</p>
-            </div>
-          </div>
-          <nav className="flex gap-2 bg-blue-800/50 p-1 rounded-xl border border-white/10">
-            <button onClick={() => setActiveTab('dashboard')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-white/10'}`}><LayoutDashboard size={18}/> Dashboard</button>
-            <button onClick={() => setActiveTab('gerenciar')} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition ${activeTab === 'gerenciar' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-white/10'}`}><Settings size={18}/> Gerenciar</button>
-          </nav>
-        </div>
-      </header>
+    <div className="app">
+      <style>{`
+        * { box-sizing: border-box; }
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f6f8; color: #333; }
+        .app { max-width: 1200px; margin: 0 auto; padding: 24px; }
+        h1, h2 { color: #1a237e; margin: 0 0 16px; }
+        .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .card { background: #fff; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .card h3 { margin: 0 0 8px; font-size: 14px; color: #546e7a; text-transform: uppercase; }
+        .card p { margin: 0; font-size: 24px; font-weight: 700; color: #0d47a1; }
+        .form-section { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); margin-bottom: 24px; }
+        .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+        .form-group { display: flex; flex-direction: column; }
+        .form-group label { font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #37474f; }
+        .form-group input { padding: 10px; border: 1px solid #cfd8dc; border-radius: 8px; font-size: 14px; }
+        .form-actions { margin-top: 20px; display: flex; gap: 12px; }
+        button { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 14px; transition: opacity .2s; }
+        button:disabled { opacity: .6; cursor: not-allowed; }
+        .btn-primary { background: #0d47a1; color: #fff; }
+        .btn-secondary { background: #78909c; color: #fff; }
+        .btn-edit { background: #0288d1; color: #fff; margin-right: 8px; }
+        .btn-delete { background: #d32f2f; color: #fff; }
+        table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        thead { background: #1a237e; color: #fff; }
+        th, td { padding: 14px 16px; text-align: left; font-size: 14px; }
+        tbody tr:nth-child(even) { background: #f8f9fa; }
+        .empty { text-align: center; padding: 24px; color: #78909c; }
+      `}</style>
 
-      <main className="max-w-7xl mx-auto p-8">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-blue-900"><Loader2 className="animate-spin mb-4" size={64} /><p className="font-bold">Sincronizando com AGESC...</p></div>
-        ) : activeTab === 'dashboard' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {condominios.map(c => (
-              <div key={c.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-2xl transition-all duration-300 group">
-                <div className="bg-blue-900 p-6 text-white group-hover:bg-blue-800 transition-colors">
-                  <h3 className="font-black text-xl leading-tight mb-1">{c.nome}</h3>
-                  <p className="text-blue-200 text-sm flex items-center gap-1 opacity-80"><MapPin size={14}/> {c.endereco || 'Brasília, DF'}</p>
-                </div>
-                <div className="p-6">
-                  <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Permissionários (PNR)</p>
-                      <p className="text-2xl font-black text-slate-700">{c.qtd_pnr}</p>
-                    </div>
-                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase mb-1">Civis</p>
-                      <p className="text-2xl font-black text-slate-700">{c.qtd_civis}</p>
-                    </div>
-                  </div>
-                  <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 flex justify-between items-center">
-                    <div>
-                      <p className="text-[10px] font-black text-emerald-600 uppercase mb-1">Taxa Unitária (Divisor 0,905)</p>
-                      <p className="text-3xl font-black text-emerald-700">R$ {calcularTaxa(c).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                    </div>
-                    <div className="bg-emerald-600 text-white p-3 rounded-xl shadow-lg shadow-emerald-200"><DollarSign size={24} /></div>
-                  </div>
-                </div>
-              </div>
-            ))}
+      <h1>Dashboard de Condomínios</h1>
+
+      <div className="dashboard">
+        <div className="card">
+          <h3>Condomínios</h3>
+          <p>{resumo.totalCondominios}</p>
+        </div>
+        <div className="card">
+          <h3>Área Total</h3>
+          <p>{resumo.areaTotal.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²</p>
+        </div>
+        <div className="card">
+          <h3>Valor Total a Pagar</h3>
+          <p>
+            R${' '}
+            {resumo.valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </p>
+        </div>
+        <div className="card">
+          <h3>Taxa Unitária Média</h3>
+          <p>R$ {resumo.taxaMedia.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })}</p>
+        </div>
+      </div>
+
+      <div className="form-section">
+        <h2>{editingId ? 'Editar Condomínio' : 'Novo Condomínio'}</h2>
+        <form onSubmit={handleSubmit}>
+          <div className="form-grid">
+            <div className="form-group">
+              <label htmlFor="nome">Nome</label>
+              <input id="nome" name="nome" value={form.nome} onChange={handleChange} required />
+            </div>
+            <div className="form-group">
+              <label htmlFor="cnpj">CNPJ</label>
+              <input id="cnpj" name="cnpj" value={form.cnpj} onChange={handleChange} />
+            </div>
+            <div className="form-group">
+              <label htmlFor="total_a_pagar">Total a Pagar (R$)</label>
+              <input
+                id="total_a_pagar"
+                name="total_a_pagar"
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.total_a_pagar}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="area_total">Área Total (m²)</label>
+              <input
+                id="area_total"
+                name="area_total"
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.area_total}
+                onChange={handleChange}
+                required
+              />
+            </div>
           </div>
+          <div className="form-actions">
+            <button type="submit" className="btn-primary" disabled={loading}>
+              {loading ? 'Salvando...' : editingId ? 'Atualizar' : 'Salvar'}
+            </button>
+            {editingId && (
+              <button type="button" className="btn-secondary" onClick={resetForm} disabled={loading}>
+                Cancelar
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+
+      <div className="table-section">
+        <h2>Listagem</h2>
+        {condominios.length === 0 ? (
+          <div className="card empty">Nenhum condomínio encontrado.</div>
         ) : (
-          <div className="max-w-4xl mx-auto space-y-10">
-            <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-              <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-900">
-                {editingId ? <Pencil size={24}/> : <PlusCircle size={24}/>} 
-                {editingId ? 'EDITAR CONDOMÍNIO' : 'NOVO CADASTRO'}
-              </h2>
-              <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Nome do Condomínio</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} required /></div>
-                <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Endereço Completo</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.endereco} onChange={e => setForm({...form, endereco: e.target.value})} /></div>
-                <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd PNR</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.qtd_pnr} onChange={e => setForm({...form, qtd_pnr: e.target.value})} required /></div>
-                <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd Civis</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.qtd_civis} onChange={e => setForm({...form, qtd_civis: e.target.value})} required /></div>
-                <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Despesa Estimada (Valor Base)</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500 text-2xl font-black text-blue-900" value={form.despesa_estimada} onChange={e => setForm({...form, despesa_estimada: e.target.value})} required /></div>
-                
-                <div className="md:col-span-2 flex gap-4">
-                  <button className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 shadow-xl shadow-blue-100 transition-all active:scale-95">
-                    {editingId ? 'SALVAR ALTERAÇÕES' : 'SALVAR CONDOMÍNIO'}
-                  </button>
-                  {editingId && (
-                    <button type="button" onClick={cancelEdit} className="bg-slate-200 text-slate-600 px-8 rounded-2xl font-black hover:bg-slate-300 transition-all">
-                      CANCELAR
+          <table>
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>CNPJ</th>
+                <th>Total a Pagar</th>
+                <th>Área Total</th>
+                <th>Taxa Unitária</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {condominios.map((c) => (
+                <tr key={c.id}>
+                  <td>{c.nome}</td>
+                  <td>{c.cnpj}</td>
+                  <td>
+                    R${' '}
+                    {Number(c.total_a_pagar || 0).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </td>
+                  <td>{Number(c.area_total || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 })} m²</td>
+                  <td>
+                    R${' '}
+                    {Number(c.taxa_unitária || 0).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 4,
+                      maximumFractionDigits: 4,
+                    })}
+                  </td>
+                  <td>
+                    <button className="btn-edit" onClick={() => handleEdit(c)} disabled={loading}>
+                      Editar
                     </button>
-                  )}
-                </div>
-              </form>
-            </div>
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="p-6 bg-slate-50 border-b border-slate-100 flex justify-between items-center"><h2 className="text-sm font-black text-slate-400 uppercase tracking-widest">Condomínios Ativos</h2><span className="bg-blue-900 text-white px-3 py-1 rounded-full text-xs font-black">{condominios.length}</span></div>
-              <table className="w-full text-left border-collapse">
-                <tbody className="divide-y divide-slate-100">
-                  {condominios.map(c => (
-                    <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-6 font-bold text-slate-700">{c.nome}</td>
-                      <td className="p-6 text-right flex justify-end gap-2">
-                        <button onClick={() => handleEdit(c)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl transition-all" title="Editar"><Pencil size={20}/></button>
-                        <button onClick={() => handleDelete(c.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-xl transition-all" title="Excluir"><Trash2 size={20}/></button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                    <button className="btn-delete" onClick={() => handleDelete(c.id)} disabled={loading}>
+                      Excluir
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
-      </main>
+      </div>
     </div>
   );
 }

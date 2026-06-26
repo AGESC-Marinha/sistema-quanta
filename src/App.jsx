@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Building2, MapPin, Users, DollarSign, Trash2, LayoutDashboard, Settings, Loader2, AlertCircle, PlusCircle } from 'lucide-react';
+import { 
+  Building2, MapPin, Users, DollarSign, Trash2, 
+  LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle 
+} from 'lucide-react';
 
 const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
@@ -10,6 +13,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [condominios, setCondominios] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState({ nome: '', endereco: '', qtd_pnr: '', qtd_civis: '', despesa_estimada: '' });
 
   useEffect(() => { fetchCondominios(); }, []);
@@ -29,25 +33,55 @@ export default function App() {
 
   async function handleSubmit(e) {
     e.preventDefault();
+    const payload = {
+      nome: form.nome,
+      endereco: form.endereco,
+      qtd_pnr: Number(form.qtd_pnr),
+      qtd_civis: Number(form.qtd_civis),
+      despesa_estimada: Number(form.despesa_estimada)
+    };
+
     try {
-      const { error } = await supabase.from('condominios').insert([{
-        nome: form.nome,
-        endereco: form.endereco,
-        qtd_pnr: Number(form.qtd_pnr),
-        qtd_civis: Number(form.qtd_civis),
-        despesa_estimada: Number(form.despesa_estimada)
-      }]);
-      if (error) throw error;
+      if (editingId) {
+        // Lógica de ATUALIZAÇÃO
+        const { error } = await supabase.from('condominios').update(payload).eq('id', editingId);
+        if (error) throw error;
+        setEditingId(null);
+        alert('Condomínio atualizado com sucesso!');
+      } else {
+        // Lógica de NOVO CADASTRO
+        const { error } = await supabase.from('condominios').insert([payload]);
+        if (error) throw error;
+        alert('Condomínio cadastrado com sucesso!');
+      }
+      
       setForm({ nome: '', endereco: '', qtd_pnr: '', qtd_civis: '', despesa_estimada: '' });
       fetchCondominios();
-      alert('Cadastrado com sucesso!');
     } catch (err) {
-      alert('Erro ao cadastrar: ' + err.message);
+      alert('Erro na operação: ' + err.message);
     }
   }
 
+  function handleEdit(c) {
+    setEditingId(c.id);
+    setForm({ 
+      nome: c.nome, 
+      endereco: c.endereco || '', 
+      qtd_pnr: c.qtd_pnr, 
+      qtd_civis: c.qtd_civis, 
+      despesa_estimada: c.despesa_estimada 
+    });
+    setActiveTab('gerenciar');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm({ nome: '', endereco: '', qtd_pnr: '', qtd_civis: '', despesa_estimada: '' });
+  }
+
   async function handleDelete(id) {
-    if (!confirm('Excluir este condomínio?')) return;
+    if (!confirm('Tem certeza que deseja excluir este condomínio?')) return;
     try {
       const { error } = await supabase.from('condominios').delete().eq('id', id);
       if (error) throw error;
@@ -117,14 +151,27 @@ export default function App() {
         ) : (
           <div className="max-w-4xl mx-auto space-y-10">
             <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-              <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-900"><PlusCircle size={24}/> NOVO CADASTRO</h2>
+              <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-900">
+                {editingId ? <Pencil size={24}/> : <PlusCircle size={24}/>} 
+                {editingId ? 'EDITAR CONDOMÍNIO' : 'NOVO CADASTRO'}
+              </h2>
               <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Nome do Condomínio</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} required /></div>
                 <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Endereço Completo</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.endereco} onChange={e => setForm({...form, endereco: e.target.value})} /></div>
                 <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd PNR</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.qtd_pnr} onChange={e => setForm({...form, qtd_pnr: e.target.value})} required /></div>
                 <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd Civis</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.qtd_civis} onChange={e => setForm({...form, qtd_civis: e.target.value})} required /></div>
                 <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Despesa Estimada (Valor Base)</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500 text-2xl font-black text-blue-900" value={form.despesa_estimada} onChange={e => setForm({...form, despesa_estimada: e.target.value})} required /></div>
-                <button className="md:col-span-2 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 shadow-xl shadow-blue-100 transition-all active:scale-95">SALVAR CONDOMÍNIO</button>
+                
+                <div className="md:col-span-2 flex gap-4">
+                  <button className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 shadow-xl shadow-blue-100 transition-all active:scale-95">
+                    {editingId ? 'SALVAR ALTERAÇÕES' : 'SALVAR CONDOMÍNIO'}
+                  </button>
+                  {editingId && (
+                    <button type="button" onClick={cancelEdit} className="bg-slate-200 text-slate-600 px-8 rounded-2xl font-black hover:bg-slate-300 transition-all">
+                      CANCELAR
+                    </button>
+                  )}
+                </div>
               </form>
             </div>
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
@@ -132,7 +179,13 @@ export default function App() {
               <table className="w-full text-left border-collapse">
                 <tbody className="divide-y divide-slate-100">
                   {condominios.map(c => (
-                    <tr key={c.id} className="hover:bg-slate-50 transition-colors"><td className="p-6 font-bold text-slate-700">{c.nome}</td><td className="p-6 text-right"><button onClick={() => handleDelete(c.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={20}/></button></td></tr>
+                    <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-6 font-bold text-slate-700">{c.nome}</td>
+                      <td className="p-6 text-right flex justify-end gap-2">
+                        <button onClick={() => handleEdit(c)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl transition-all" title="Editar"><Pencil size={20}/></button>
+                        <button onClick={() => handleDelete(c.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-xl transition-all" title="Excluir"><Trash2 size={20}/></button>
+                      </td>
+                    </tr>
                   ))}
                 </tbody>
               </table>

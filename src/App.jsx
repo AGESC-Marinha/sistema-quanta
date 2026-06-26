@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { Building2, MapPin, Users, DollarSign, Trash2, LayoutDashboard, Settings, Loader2, AlertCircle } from 'lucide-react';
+import { Building2, MapPin, Users, DollarSign, Trash2, LayoutDashboard, Settings, Loader2, AlertCircle, PlusCircle } from 'lucide-react';
 
 const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
@@ -10,7 +10,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [condominios, setCondominios] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [form, setForm] = useState({ nome: '', endereco: '', qtd_pnr: '', qtd_civis: '', despesa_estimada: '' });
 
   useEffect(() => { fetchCondominios(); }, []);
@@ -18,11 +17,11 @@ export default function App() {
   async function fetchCondominios() {
     try {
       setLoading(true);
-      const { data, error: supaError } = await supabase.from('condominios').select('*').order('nome');
-      if (supaError) throw supaError;
+      const { data, error } = await supabase.from('condominios').select('*').order('nome');
+      if (error) throw error;
       setCondominios(data || []);
     } catch (err) {
-      setError(err.message);
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -31,14 +30,14 @@ export default function App() {
   async function handleSubmit(e) {
     e.preventDefault();
     try {
-      const { error: supaError } = await supabase.from('condominios').insert([{
+      const { error } = await supabase.from('condominios').insert([{
         nome: form.nome,
         endereco: form.endereco,
         qtd_pnr: Number(form.qtd_pnr),
         qtd_civis: Number(form.qtd_civis),
         despesa_estimada: Number(form.despesa_estimada)
       }]);
-      if (supaError) throw supaError;
+      if (error) throw error;
       setForm({ nome: '', endereco: '', qtd_pnr: '', qtd_civis: '', despesa_estimada: '' });
       fetchCondominios();
       alert('Cadastrado com sucesso!');
@@ -50,8 +49,8 @@ export default function App() {
   async function handleDelete(id) {
     if (!confirm('Excluir este condomínio?')) return;
     try {
-      const { error: supaError } = await supabase.from('condominios').delete().eq('id', id);
-      if (supaError) throw supaError;
+      const { error } = await supabase.from('condominios').delete().eq('id', id);
+      if (error) throw error;
       fetchCondominios();
     } catch (err) {
       alert('Erro ao excluir: ' + err.message);

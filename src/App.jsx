@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import {
   Building2,
@@ -16,14 +16,15 @@ import {
   Flame,
   ArrowUpCircle,
   ExternalLink,
-  X
+  X,
 } from 'lucide-react';
 
-const SUPABASE_URL = 'https://bjeklbralayvulcuqiqe.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
 
-const INITIAL_FORM = {
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+const initialForm = {
   nome: '',
   endereco: '',
   cnpj: '',
@@ -31,29 +32,22 @@ const INITIAL_FORM = {
   qtd_civis: '',
   despesa_estimada: '',
   dados_bancarios: '',
-  saldo_fundo_reserva: '',
-  projetos_incendio: '',
-  possui_elevadores: 'Não',
-  qtd_elevadores: '',
+  saldo_reserva: '',
+  projetos_incendio_link: '',
+  possui_elevadores: false,
   empresa_elevadores: '',
-  status_manutencao: ''
+  status_manutencao: '',
 };
 
-export default function App() {
+function App() {
   const [condominios, setCondominios] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [modalOpen, setModalOpen] = useState(false);
-  const [selectedCondominio, setSelectedCondominio] = useState(null);
-  const [form, setForm] = useState(INITIAL_FORM);
+  const [selectedCondo, setSelectedCondo] = useState(null);
+  const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
 
-  useEffect(() => {
-    fetchCondominios();
-  }, []);
-
-  async function fetchCondominios() {
+  const fetchCondominios = async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('condominios')
@@ -62,575 +56,592 @@ export default function App() {
 
     if (error) {
       console.error('Erro ao buscar condomínios:', error);
-      alert('Erro ao carregar condomínios. Verifique o console.');
     } else {
       setCondominios(data || []);
     }
     setLoading(false);
-  }
-
-  const calculateTaxa = (c) => {
-    const despesa = Number(c.despesa_estimada) || 0;
-    const total = (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
-    if (total === 0 || despesa === 0) return 0;
-    return (despesa / total) / 0.905;
   };
 
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(Number(value) || 0);
-  };
+  useEffect(() => {
+    fetchCondominios();
+  }, []);
 
   const handleChange = (e) => {
-    const { name, value, type } = e.target;
+    const { name, value, type, checked } = e.target;
     setForm((prev) => ({
       ...prev,
-      [name]: type === 'number' ? (value === '' ? '' : Number(value)) : value
+      [name]: type === 'checkbox' ? checked : value,
     }));
+  };
+
+  const resetForm = () => {
+    setForm(initialForm);
+    setEditingId(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSaving(true);
 
     const payload = {
-      ...form,
-      possui_elevadores: form.possui_elevadores === 'Sim',
-      qtd_pnr: form.qtd_pnr === '' ? null : Number(form.qtd_pnr),
-      qtd_civis: form.qtd_civis === '' ? null : Number(form.qtd_civis),
-      despesa_estimada: form.despesa_estimada === '' ? null : Number(form.despesa_estimada),
-      saldo_fundo_reserva: form.saldo_fundo_reserva === '' ? null : Number(form.saldo_fundo_reserva),
-      qtd_elevadores: form.qtd_elevadores === '' ? null : Number(form.qtd_elevadores)
+      nome: form.nome,
+      endereco: form.endereco,
+      cnpj: form.cnpj,
+      qtd_pnr: Number(form.qtd_pnr) || 0,
+      qtd_civis: Number(form.qtd_civis) || 0,
+      despesa_estimada: Number(form.despesa_estimada) || 0,
+      dados_bancarios: form.dados_bancarios,
+      saldo_reserva: Number(form.saldo_reserva) || 0,
+      projetos_incendio_link: form.projetos_incendio_link,
+      possui_elevadores: form.possui_elevadores,
+      empresa_elevadores: form.empresa_elevadores,
+      status_manutencao: form.status_manutencao,
     };
 
-    try {
-      if (editingId) {
-        const { error } = await supabase
-          .from('condominios')
-          .update(payload)
-          .eq('id', editingId);
-        if (error) throw error;
-        setEditingId(null);
+    if (editingId) {
+      const { error } = await supabase
+        .from('condominios')
+        .update(payload)
+        .eq('id', editingId);
+
+      if (!error) {
+        resetForm();
+        fetchCondominios();
       } else {
-        const { error } = await supabase.from('condominios').insert(payload);
-        if (error) throw error;
+        console.error('Erro ao atualizar:', error);
       }
-      setForm(INITIAL_FORM);
-      await fetchCondominios();
-      setActiveTab('dashboard');
-    } catch (error) {
-      alert('Erro ao salvar: ' + error.message);
-    } finally {
-      setSaving(false);
+    } else {
+      const { error } = await supabase
+        .from('condominios')
+        .insert(payload);
+
+      if (!error) {
+        resetForm();
+        fetchCondominios();
+      } else {
+        console.error('Erro ao inserir:', error);
+      }
     }
   };
 
-  const handleEdit = (c) => {
+  const handleEdit = (cond) => {
     setForm({
-      nome: c.nome || '',
-      endereco: c.endereco || '',
-      cnpj: c.cnpj || '',
-      qtd_pnr: c.qtd_pnr ?? '',
-      qtd_civis: c.qtd_civis ?? '',
-      despesa_estimada: c.despesa_estimada ?? '',
-      dados_bancarios: c.dados_bancarios || '',
-      saldo_fundo_reserva: c.saldo_fundo_reserva ?? '',
-      projetos_incendio: c.projetos_incendio || '',
-      possui_elevadores: c.possui_elevadores ? 'Sim' : 'Não',
-      qtd_elevadores: c.qtd_elevadores ?? '',
-      empresa_elevadores: c.empresa_elevadores || '',
-      status_manutencao: c.status_manutencao || ''
+      nome: cond.nome || '',
+      endereco: cond.endereco || '',
+      cnpj: cond.cnpj || '',
+      qtd_pnr: cond.qtd_pnr ?? '',
+      qtd_civis: cond.qtd_civis ?? '',
+      despesa_estimada: cond.despesa_estimada ?? '',
+      dados_bancarios: cond.dados_bancarios || '',
+      saldo_reserva: cond.saldo_reserva ?? '',
+      projetos_incendio_link: cond.projetos_incendio_link || '',
+      possui_elevadores: cond.possui_elevadores || false,
+      empresa_elevadores: cond.empresa_elevadores || '',
+      status_manutencao: cond.status_manutencao || '',
     });
-    setEditingId(c.id);
+    setEditingId(cond.id);
     setActiveTab('gerenciar');
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Tem certeza que deseja excluir este condomínio?')) return;
-    const { error } = await supabase.from('condominios').delete().eq('id', id);
-    if (error) {
-      alert('Erro ao excluir: ' + error.message);
+    if (!window.confirm('Tem certeza que deseja excluir este condomínio?')) return;
+
+    const { error } = await supabase
+      .from('condominios')
+      .delete()
+      .eq('id', id);
+
+    if (!error) {
+      fetchCondominios();
+      if (selectedCondo && selectedCondo.id === id) setSelectedCondo(null);
     } else {
-      await fetchCondominios();
+      console.error('Erro ao excluir:', error);
     }
   };
 
-  const openModal = (c) => {
-    setSelectedCondominio(c);
-    setModalOpen(true);
+  const calculateTaxa = (cond) => {
+    const divisor = Number(cond.qtd_pnr || 0) + Number(cond.qtd_civis || 0);
+    if (!divisor) return 0;
+    return (Number(cond.despesa_estimada || 0) / divisor) / 0.905;
   };
 
-  const closeModal = () => {
-    setModalOpen(false);
-    setSelectedCondominio(null);
-  };
+  const formatCurrency = (value) =>
+    Number(value || 0).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    });
 
-  const isLink = (value) => {
-    return value && typeof value === 'string' && value.trim().startsWith('http');
-  };
-
-  const renderField = (label, value, icon = null) => (
-    <div className="bg-slate-50 p-3 rounded-lg border border-slate-200">
-      <span className="text-xs font-semibold text-blue-900 uppercase tracking-wide flex items-center gap-2">
-        {icon && <span className="text-emerald-600">{icon}</span>}
-        {label}
-      </span>
-      <p className="mt-1 text-sm text-slate-800 font-medium break-words">
-        {value !== null && value !== undefined && value !== '' ? value : '—'}
-      </p>
-    </div>
-  );
-
-  const FormField = ({ label, name, type = 'text', placeholder = '', required = false }) => (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={name} className="text-sm font-semibold text-blue-900">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <input
-        id={name}
-        name={name}
-        type={type}
-        value={form[name]}
-        onChange={handleChange}
-        placeholder={placeholder}
-        required={required}
-        className="px-4 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm"
-      />
-    </div>
-  );
-
-  const TextAreaField = ({ label, name, placeholder = '', required = false }) => (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={name} className="text-sm font-semibold text-blue-900">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <textarea
-        id={name}
-        name={name}
-        value={form[name]}
-        onChange={handleChange}
-        placeholder={placeholder}
-        required={required}
-        rows={3}
-        className="px-4 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm resize-none"
-      />
-    </div>
-  );
+  const formInputClass =
+    'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500';
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
-      <header className="bg-gradient-to-r from-blue-900 to-blue-800 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-emerald-500 p-2 rounded-lg">
-                <Building2 className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">Gestão de Condomínios</h1>
-                <p className="text-blue-100 text-sm">Painel administrativo completo</p>
-              </div>
-            </div>
-            <nav className="flex bg-blue-800/50 rounded-xl p-1 gap-1">
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                  activeTab === 'dashboard'
-                    ? 'bg-emerald-500 text-white shadow-md'
-                    : 'text-blue-100 hover:bg-blue-700/50'
-                }`}
-              >
-                <LayoutDashboard className="w-4 h-4" />
-                Dashboard
-              </button>
-              <button
-                onClick={() => setActiveTab('gerenciar')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                  activeTab === 'gerenciar'
-                    ? 'bg-emerald-500 text-white shadow-md'
-                    : 'text-blue-100 hover:bg-blue-700/50'
-                }`}
-              >
-                <Settings className="w-4 h-4" />
-                Gerenciar
-              </button>
-            </nav>
-          </div>
+      <header className="bg-blue-900 text-white p-4 shadow-md flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-2">
+          <Building2 className="w-7 h-7 text-green-400" />
+          <h1 className="text-xl font-bold tracking-tight">Condomínios</h1>
         </div>
+
+        <nav className="flex gap-2">
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              activeTab === 'dashboard'
+                ? 'bg-green-500 text-white shadow'
+                : 'bg-blue-800 hover:bg-blue-700'
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            Dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab('gerenciar')}
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              activeTab === 'gerenciar'
+                ? 'bg-green-500 text-white shadow'
+                : 'bg-blue-800 hover:bg-blue-700'
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            Gerenciar
+          </button>
+        </nav>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center py-20 text-blue-900">
-            <Loader2 className="w-10 h-10 animate-spin mb-4 text-emerald-500" />
-            <p className="text-lg font-medium">Carregando condomínios...</p>
+      <main className="p-4 max-w-7xl mx-auto">
+        {loading && (
+          <div className="mt-16 flex flex-col items-center justify-center gap-2 text-blue-900">
+            <Loader2 className="w-8 h-8 animate-spin" />
+            <span className="text-sm font-medium">Carregando condomínios...</span>
           </div>
-        ) : (
-          <>
-            {activeTab === 'dashboard' && (
-              <section>
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-blue-900 flex items-center gap-2">
-                    <LayoutDashboard className="w-6 h-6 text-emerald-600" />
-                    Dashboard
-                  </h2>
-                  <p className="text-slate-500 mt-1">
-                    Visualize os condomínios cadastrados e clique em um card para ver a ficha técnica completa.
-                  </p>
+        )}
+
+        {!loading && activeTab === 'dashboard' && (
+          <section>
+            <h2 className="mb-6 flex items-center gap-2 text-2xl font-bold text-blue-900">
+              <LayoutDashboard className="w-6 h-6 text-green-600" />
+              Dashboard
+            </h2>
+
+            {condominios.length === 0 ? (
+              <p className="text-slate-500">Nenhum condomínio cadastrado.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {condominios.map((cond) => (
+                  <button
+                    key={cond.id}
+                    onClick={() => setSelectedCondo(cond)}
+                    className="text-left rounded-xl border-l-4 border-green-500 bg-white p-5 shadow transition hover:-translate-y-1 hover:shadow-lg"
+                  >
+                    <div className="mb-2 flex items-center gap-2">
+                      <Building2 className="w-5 h-5 text-blue-900" />
+                      <h3 className="text-lg font-bold text-blue-900">{cond.nome}</h3>
+                    </div>
+                    <div className="mb-2 flex items-start gap-2 text-sm text-slate-600">
+                      <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                      <span>{cond.endereco}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                      <DollarSign className="h-4 w-4 text-green-600" />
+                      Taxa Unitária: {formatCurrency(calculateTaxa(cond))}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {!loading && activeTab === 'gerenciar' && (
+          <section>
+            <h2 className="mb-6 flex items-center gap-2 text-2xl font-bold text-blue-900">
+              <Settings className="w-6 h-6 text-green-600" />
+              Gerenciar Condomínios
+            </h2>
+
+            <form
+              onSubmit={handleSubmit}
+              className="mb-8 rounded-xl bg-white p-6 shadow"
+            >
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Nome
+                  </label>
+                  <input
+                    type="text"
+                    name="nome"
+                    value={form.nome}
+                    onChange={handleChange}
+                    required
+                    className={formInputClass}
+                    placeholder="Nome do condomínio"
+                  />
                 </div>
 
-                {condominios.length === 0 ? (
-                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-12 text-center">
-                    <Building2 className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold text-blue-900">Nenhum condomínio cadastrado</h3>
-                    <p className="text-slate-500 mt-2">Acesse a aba Gerenciar para adicionar o primeiro registro.</p>
-                    <button
-                      onClick={() => setActiveTab('gerenciar')}
-                      className="mt-6 inline-flex items-center gap-2 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-semibold transition-colors"
-                    >
-                      <PlusCircle className="w-4 h-4" />
-                      Novo Condomínio
-                    </button>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {condominios.map((c) => {
-                      const taxa = calculateTaxa(c);
-                      const totalPessoas = (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
-                      return (
-                        <button
-                          key={c.id}
-                          onClick={() => openModal(c)}
-                          className="group text-left bg-white rounded-2xl shadow-sm border border-slate-200 p-6 transition-all hover:shadow-lg hover:border-emerald-300 hover:-translate-y-1 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2"
-                        >
-                          <div className="flex items-start justify-between mb-4">
-                            <div className="bg-blue-100 p-3 rounded-xl">
-                              <Building2 className="w-6 h-6 text-blue-900" />
-                            </div>
-                            <div className="bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-bold">
-                              Taxa: {formatCurrency(taxa)}
-                            </div>
-                          </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Endereço
+                  </label>
+                  <input
+                    type="text"
+                    name="endereco"
+                    value={form.endereco}
+                    onChange={handleChange}
+                    required
+                    className={formInputClass}
+                    placeholder="Endereço completo"
+                  />
+                </div>
 
-                          <h3 className="text-lg font-bold text-blue-900 mb-2 group-hover:text-emerald-700 transition-colors">
-                            {c.nome || 'Sem nome'}
-                          </h3>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    CNPJ
+                  </label>
+                  <input
+                    type="text"
+                    name="cnpj"
+                    value={form.cnpj}
+                    onChange={handleChange}
+                    className={formInputClass}
+                    placeholder="00.000.000/0000-00"
+                  />
+                </div>
 
-                          <div className="space-y-2 text-sm text-slate-600">
-                            <p className="flex items-start gap-2">
-                              <MapPin className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-                              <span className="line-clamp-2">{c.endereco || 'Endereço não informado'}</span>
-                            </p>
-                            <p className="flex items-center gap-2">
-                              <Users className="w-4 h-4 text-emerald-500" />
-                              <span>{totalPessoas} pessoa(s) (PNR: {c.qtd_pnr || 0}, Civis: {c.qtd_civis || 0})</span>
-                            </p>
-                            <p className="flex items-center gap-2">
-                              <DollarSign className="w-4 h-4 text-emerald-500" />
-                              <span>Despesa estimada: {formatCurrency(c.despesa_estimada)}</span>
-                            </p>
-                          </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Qtd PNR
+                  </label>
+                  <input
+                    type="number"
+                    name="qtd_pnr"
+                    value={form.qtd_pnr}
+                    onChange={handleChange}
+                    min="0"
+                    className={formInputClass}
+                    placeholder="0"
+                  />
+                </div>
 
-                          <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
-                            <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">
-                              Ver ficha técnica
-                            </span>
-                            <ExternalLink className="w-4 h-4 text-slate-400 group-hover:text-emerald-500 transition-colors" />
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Qtd Civis
+                  </label>
+                  <input
+                    type="number"
+                    name="qtd_civis"
+                    value={form.qtd_civis}
+                    onChange={handleChange}
+                    min="0"
+                    className={formInputClass}
+                    placeholder="0"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Despesa Estimada
+                  </label>
+                  <input
+                    type="number"
+                    name="despesa_estimada"
+                    value={form.despesa_estimada}
+                    onChange={handleChange}
+                    min="0"
+                    step="0.01"
+                    className={formInputClass}
+                    placeholder="R$ 0,00"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Dados Bancários
+                  </label>
+                  <input
+                    type="text"
+                    name="dados_bancarios"
+                    value={form.dados_bancarios}
+                    onChange={handleChange}
+                    className={formInputClass}
+                    placeholder="Banco, agência, conta..."
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Saldo Reserva
+                  </label>
+                  <input
+                    type="number"
+                    name="saldo_reserva"
+                    value={form.saldo_reserva}
+                    onChange={handleChange}
+                    min="0"
+                    step="0.01"
+                    className={formInputClass}
+                    placeholder="R$ 0,00"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Projetos Incêndio (Link)
+                  </label>
+                  <input
+                    type="url"
+                    name="projetos_incendio_link"
+                    value={form.projetos_incendio_link}
+                    onChange={handleChange}
+                    className={formInputClass}
+                    placeholder="https://..."
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Empresa Elevadores
+                  </label>
+                  <input
+                    type="text"
+                    name="empresa_elevadores"
+                    value={form.empresa_elevadores}
+                    onChange={handleChange}
+                    className={formInputClass}
+                    placeholder="Nome da empresa"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Status Manutenção
+                  </label>
+                  <input
+                    type="text"
+                    name="status_manutencao"
+                    value={form.status_manutencao}
+                    onChange={handleChange}
+                    className={formInputClass}
+                    placeholder="Em dia, pendente, etc."
+                  />
+                </div>
+
+                <div className="flex items-end">
+                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                    <input
+                      type="checkbox"
+                      name="possui_elevadores"
+                      checked={form.possui_elevadores}
+                      onChange={handleChange}
+                      className="h-4 w-4 accent-green-600"
+                    />
+                    Possui Elevadores
+                  </label>
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  type="submit"
+                  className="flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white shadow transition hover:bg-green-500"
+                >
+                  {editingId ? (
+                    <>
+                      <Pencil className="w-4 h-4" /> Atualizar Condomínio
+                    </>
+                  ) : (
+                    <>
+                      <PlusCircle className="w-4 h-4" /> Salvar Condomínio
+                    </>
+                  )}
+                </button>
+                {editingId && (
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="flex items-center gap-2 rounded-lg bg-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-300"
+                  >
+                    <XCircle className="w-4 h-4" /> Cancelar
+                  </button>
                 )}
-              </section>
-            )}
+              </div>
+            </form>
 
-            {activeTab === 'gerenciar' && (
-              <section>
-                <div className="mb-6">
-                  <h2 className="text-2xl font-bold text-blue-900 flex items-center gap-2">
-                    <Settings className="w-6 h-6 text-emerald-600" />
-                    Gerenciar Condomínios
-                  </h2>
-                  <p className="text-slate-500 mt-1">
-                    Cadastre, edite ou remova condomínios. Preencha todos os campos obrigatórios.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-                  <div className="xl:col-span-1">
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-                      <div className="flex items-center gap-2 mb-5">
-                        <div className="bg-emerald-100 p-2 rounded-lg">
-                          {editingId ? (
-                            <Pencil className="w-5 h-5 text-emerald-700" />
-                          ) : (
-                            <PlusCircle className="w-5 h-5 text-emerald-700" />
-                          )}
-                        </div>
-                        <h3 className="text-lg font-bold text-blue-900">
-                          {editingId ? 'Editar Condomínio' : 'Novo Condomínio'}
-                        </h3>
-                      </div>
-
-                      <form onSubmit={handleSubmit} className="space-y-4">
-                        <FormField label="Nome" name="nome" required />
-                        <FormField label="Endereço" name="endereco" required />
-                        <FormField label="CNPJ" name="cnpj" />
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <FormField label="Qtd. PNR" name="qtd_pnr" type="number" />
-                          <FormField label="Qtd. Civis" name="qtd_civis" type="number" />
-                        </div>
-
-                        <FormField label="Despesa Estimada (R$)" name="despesa_estimada" type="number" step="0.01" />
-                        <TextAreaField label="Dados Bancários" name="dados_bancarios" />
-                        <FormField label="Saldo Fundo de Reserva (R$)" name="saldo_fundo_reserva" type="number" step="0.01" />
-                        <FormField label="Projetos de Incêndio (URL)" name="projetos_incendio" placeholder="https://..." />
-
-                        <div className="flex flex-col gap-1">
-                          <label htmlFor="possui_elevadores" className="text-sm font-semibold text-blue-900">
-                            Possui Elevadores?
-                          </label>
-                          <select
-                            id="possui_elevadores"
-                            name="possui_elevadores"
-                            value={form.possui_elevadores}
-                            onChange={handleChange}
-                            className="px-4 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm bg-white"
-                          >
-                            <option value="Não">Não</option>
-                            <option value="Sim">Sim</option>
-                          </select>
-                        </div>
-
-                        <FormField label="Qtd. Elevadores" name="qtd_elevadores" type="number" />
-                        <FormField label="Empresa de Elevadores" name="empresa_elevadores" />
-                        <FormField label="Status de Manutenção" name="status_manutencao" />
-
-                        <div className="pt-4 flex flex-col gap-3">
-                          <button
-                            type="submit"
-                            disabled={saving}
-                            className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-emerald-300 text-white rounded-lg font-semibold transition-colors"
-                          >
-                            {saving ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : editingId ? (
-                              <Pencil className="w-4 h-4" />
-                            ) : (
-                              <PlusCircle className="w-4 h-4" />
-                            )}
-                            {saving ? 'Salvando...' : editingId ? 'Atualizar Condomínio' : 'Cadastrar Condomínio'}
-                          </button>
-                          {editingId && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setEditingId(null);
-                                setForm(INITIAL_FORM);
-                              }}
-                              className="w-full flex items-center justify-center gap-2 px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold transition-colors"
-                            >
-                              <XCircle className="w-4 h-4" />
-                              Cancelar Edição
-                            </button>
-                          )}
-                        </div>
-                      </form>
+            {condominios.length === 0 ? (
+              <p className="text-slate-500">Nenhum condomínio para listar.</p>
+            ) : (
+              <ul className="space-y-3">
+                {condominios.map((cond) => (
+                  <li
+                    key={cond.id}
+                    className="flex flex-col justify-between gap-3 rounded-lg bg-white p-4 shadow md:flex-row md:items-center"
+                  >
+                    <div>
+                      <h3 className="font-bold text-blue-900">{cond.nome}</h3>
+                      <p className="text-sm text-slate-600">{cond.endereco}</p>
                     </div>
-                  </div>
-
-                  <div className="xl:col-span-2">
-                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                      <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
-                        <h3 className="text-lg font-bold text-blue-900 flex items-center gap-2">
-                          <Building2 className="w-5 h-5 text-emerald-600" />
-                          Condomínios Cadastrados
-                        </h3>
-                      </div>
-
-                      {condominios.length === 0 ? (
-                        <div className="p-10 text-center text-slate-500">
-                          <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                          Nenhum condomínio encontrado.
-                        </div>
-                      ) : (
-                        <ul className="divide-y divide-slate-100">
-                          {condominios.map((c) => {
-                            const taxa = calculateTaxa(c);
-                            return (
-                              <li
-                                key={c.id}
-                                className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50 transition-colors"
-                              >
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-base font-bold text-blue-900 truncate">{c.nome}</p>
-                                  <p className="text-sm text-slate-500 flex items-center gap-1 truncate">
-                                    <MapPin className="w-3.5 h-3.5 text-emerald-500" />
-                                    {c.endereco || 'Endereço não informado'}
-                                  </p>
-                                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                                    <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded-md font-medium">
-                                      Taxa: {formatCurrency(taxa)}
-                                    </span>
-                                    <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md font-medium">
-                                      PNR: {c.qtd_pnr || 0}
-                                    </span>
-                                    <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded-md font-medium">
-                                      Civis: {c.qtd_civis || 0}
-                                    </span>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <button
-                                    onClick={() => handleEdit(c)}
-                                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-                                  >
-                                    <Pencil className="w-4 h-4" />
-                                    Editar
-                                  </button>
-                                  <button
-                                    onClick={() => handleDelete(c.id)}
-                                    className="flex items-center gap-1.5 px-3 py-2 text-sm font-semibold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                    Excluir
-                                  </button>
-                                </div>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleEdit(cond)}
+                        className="flex items-center gap-2 rounded-lg bg-blue-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-800"
+                      >
+                        <Pencil className="w-4 h-4" /> Editar
+                      </button>
+                      <button
+                        onClick={() => handleDelete(cond.id)}
+                        className="flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-500"
+                      >
+                        <Trash2 className="w-4 h-4" /> Excluir
+                      </button>
                     </div>
-                  </div>
-                </div>
-              </section>
+                  </li>
+                ))}
+              </ul>
             )}
-          </>
+          </section>
         )}
       </main>
 
-      {modalOpen && selectedCondominio && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-gradient-to-r from-blue-900 to-blue-800 px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="bg-emerald-500 p-2 rounded-lg">
-                  <Building2 className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-white">Ficha Técnica</h2>
-                  <p className="text-blue-100 text-sm">{selectedCondominio.nome}</p>
-                </div>
-              </div>
+      {selectedCondo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between border-b border-slate-200 pb-3">
+              <h2 className="flex items-center gap-2 text-xl font-bold text-blue-900">
+                <Building2 className="w-6 h-6 text-green-600" />
+                Ficha Técnica
+              </h2>
               <button
-                onClick={closeModal}
-                className="p-2 rounded-lg text-white hover:bg-white/10 transition-colors"
+                onClick={() => setSelectedCondo(null)}
+                className="text-slate-500 transition hover:text-red-600"
               >
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
-              <div>
-                <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Building2 className="w-4 h-4" />
-                  Informações Básicas
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {renderField('Nome', selectedCondominio.nome, <Building2 className="w-3.5 h-3.5" />)}
-                  {renderField('Endereço', selectedCondominio.endereco, <MapPin className="w-3.5 h-3.5" />)}
-                  {renderField('CNPJ', selectedCondominio.cnpj)}
+            <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
+              <div className="flex items-start gap-2">
+                <Building2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">Nome:</span>
+                  <p className="text-slate-900">{selectedCondo.nome}</p>
                 </div>
               </div>
 
-              <div>
-                <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Users className="w-4 h-4" />
-                  Quantidades e Cálculo
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {renderField('Qtd. PNR', selectedCondominio.qtd_pnr)}
-                  {renderField('Qtd. Civis', selectedCondominio.qtd_civis)}
-                  {renderField('Total Pessoas', (Number(selectedCondominio.qtd_pnr) || 0) + (Number(selectedCondominio.qtd_civis) || 0))}
-                  <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-200">
-                    <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wide flex items-center gap-2">
-                      <DollarSign className="w-3.5 h-3.5" />
-                      Taxa Unitária
-                    </span>
-                    <p className="mt-1 text-lg font-bold text-emerald-800">
-                      {formatCurrency(calculateTaxa(selectedCondominio))}
-                    </p>
-                  </div>
+              <div className="flex items-start gap-2">
+                <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">Endereço:</span>
+                  <p className="text-slate-900">{selectedCondo.endereco}</p>
                 </div>
               </div>
 
-              <div>
-                <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <DollarSign className="w-4 h-4" />
-                  Financeiro
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {renderField('Despesa Estimada', formatCurrency(selectedCondominio.despesa_estimada), <DollarSign className="w-3.5 h-3.5" />)}
-                  {renderField('Saldo Fundo de Reserva', formatCurrency(selectedCondominio.saldo_fundo_reserva), <CreditCard className="w-3.5 h-3.5" />)}
-                  {renderField('Dados Bancários', selectedCondominio.dados_bancarios, <CreditCard className="w-3.5 h-3.5" />)}
+              <div className="flex items-start gap-2">
+                <CreditCard className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">CNPJ:</span>
+                  <p className="text-slate-900">{selectedCondo.cnpj}</p>
                 </div>
               </div>
 
-              <div>
-                <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Flame className="w-4 h-4" />
-                  Projetos de Incêndio
-                </h3>
-                <div className="grid grid-cols-1 gap-3">
-                  {renderField('Link / Informação', selectedCondominio.projetos_incendio, <Flame className="w-3.5 h-3.5" />)}
-                  {isLink(selectedCondominio.projetos_incendio) && (
-                    <a
-                      href={selectedCondominio.projetos_incendio}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 w-fit px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold transition-colors"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      Abrir Projeto
-                    </a>
-                  )}
+              <div className="flex items-start gap-2">
+                <Users className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">Qtd PNR:</span>
+                  <p className="text-slate-900">{selectedCondo.qtd_pnr}</p>
                 </div>
               </div>
 
-              <div>
-                <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <ArrowUpCircle className="w-4 h-4" />
-                  Elevadores
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {renderField('Possui Elevadores', selectedCondominio.possui_elevadores ? 'Sim' : 'Não')}
-                  {renderField('Qtd. Elevadores', selectedCondominio.qtd_elevadores)}
-                  {renderField('Empresa de Elevadores', selectedCondominio.empresa_elevadores)}
+              <div className="flex items-start gap-2">
+                <Users className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">Qtd Civis:</span>
+                  <p className="text-slate-900">{selectedCondo.qtd_civis}</p>
                 </div>
               </div>
 
-              <div>
-                <h3 className="text-sm font-bold text-emerald-600 uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Settings className="w-4 h-4" />
-                  Manutenção
-                </h3>
-                <div className="grid grid-cols-1 gap-3">
-                  {renderField('Status de Manutenção', selectedCondominio.status_manutencao, <Settings className="w-3.5 h-3.5" />)}
+              <div className="flex items-start gap-2">
+                <DollarSign className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">Despesa Estimada:</span>
+                  <p className="text-slate-900">{formatCurrency(selectedCondo.despesa_estimada)}</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <DollarSign className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">Taxa Unitária:</span>
+                  <p className="text-slate-900">{formatCurrency(calculateTaxa(selectedCondo))}</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <CreditCard className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">Dados Bancários:</span>
+                  <p className="text-slate-900">{selectedCondo.dados_bancarios}</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <DollarSign className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">Saldo Reserva:</span>
+                  <p className="text-slate-900">{formatCurrency(selectedCondo.saldo_reserva)}</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <Flame className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">Projetos Incêndio:</span>
+                  <p className="break-all text-slate-900">
+                    {selectedCondo.projetos_incendio_link ? (
+                      <a
+                        href={selectedCondo.projetos_incendio_link}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 text-blue-600 hover:underline"
+                      >
+                        Acessar link <ExternalLink className="h-3 w-3" />
+                      </a>
+                    ) : (
+                      '-'
+                    )}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <ArrowUpCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">Possui Elevadores:</span>
+                  <p className="text-slate-900">{selectedCondo.possui_elevadores ? 'Sim' : 'Não'}</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <Building2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">Empresa Elevadores:</span>
+                  <p className="text-slate-900">{selectedCondo.empresa_elevadores}</p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2">
+                <Settings className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
+                <div>
+                  <span className="font-semibold text-slate-700">Status Manutenção:</span>
+                  <p className="text-slate-900">{selectedCondo.status_manutencao}</p>
                 </div>
               </div>
             </div>
 
-            <div className="sticky bottom-0 bg-slate-50 px-6 py-4 border-t border-slate-200 flex justify-end">
+            <div className="mt-6 flex justify-end">
               <button
-                onClick={closeModal}
-                className="px-6 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg font-semibold transition-colors"
+                onClick={() => setSelectedCondo(null)}
+                className="flex items-center gap-2 rounded-lg bg-blue-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-800"
               >
-                Fechar
+                <XCircle className="w-4 h-4" /> Fechar
               </button>
             </div>
           </div>
@@ -639,3 +650,5 @@ export default function App() {
     </div>
   );
 }
+
+export default App;

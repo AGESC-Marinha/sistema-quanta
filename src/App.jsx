@@ -5,7 +5,6 @@ import {
   LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle 
 } from 'lucide-react';
 
-// CONFIGURAÇÃO DIRETA (BLINDADA)
 const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -26,7 +25,7 @@ export default function App() {
       if (error) throw error;
       setCondominios(data || []);
     } catch (err) {
-      console.error('Erro ao buscar:', err);
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -54,7 +53,7 @@ export default function App() {
         alert('Cadastrado com sucesso!');
       }
       setForm({ nome: '', endereco: '', qtd_pnr: '', qtd_civis: '', despesa_estimada: '' });
-      await fetchCondominios(); // Atualiza a lista na hora
+      await fetchCondominios();
     } catch (err) {
       alert('Erro: ' + err.message);
     }
@@ -74,15 +73,15 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       <header className="bg-blue-900 text-white p-6 shadow-xl flex justify-between items-center">
         <div className="flex items-center gap-3">
           <Building2 size={32} />
           <h1 className="text-2xl font-black">SISTEMA QUANTA</h1>
         </div>
         <nav className="flex gap-2">
-          <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'dashboard' ? 'bg-white text-blue-900' : 'hover:bg-blue-800'}`}>Dashboard</button>
-          <button onClick={() => setActiveTab('gerenciar')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'gerenciar' ? 'bg-white text-blue-900' : 'hover:bg-blue-800'}`}>Gerenciar</button>
+          <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Dashboard</button>
+          <button onClick={() => setActiveTab('gerenciar')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'gerenciar' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-white/10'}`}>Gerenciar</button>
         </nav>
       </header>
 
@@ -103,33 +102,52 @@ export default function App() {
             </div>
           ) : (
             <div className="max-w-4xl mx-auto space-y-10">
-              <form onSubmit={handleSubmit} className="bg-white p-8 rounded-3xl shadow-sm grid grid-cols-1 md:grid-cols-2 gap-6 border">
-                <h2 className="md:col-span-2 text-xl font-black text-blue-900 flex items-center gap-2">
-                  {editingId ? <Pencil /> : <PlusCircle />} {editingId ? 'EDITAR CONDOMÍNIO' : 'NOVO CADASTRO'}
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-900">
+                  {editingId ? <Pencil size={24}/> : <PlusCircle size={24}/>} 
+                  {editingId ? 'EDITAR CONDOMÍNIO' : 'NOVO CADASTRO'}
                 </h2>
-                <input className="bg-slate-50 p-4 rounded-xl border-none focus:ring-2 focus:ring-blue-500" placeholder="Nome" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} required />
-                <input className="bg-slate-50 p-4 rounded-xl border-none focus:ring-2 focus:ring-blue-500" placeholder="Endereço" value={form.endereco} onChange={e => setForm({...form, endereco: e.target.value})} />
-                <input type="number" className="bg-slate-50 p-4 rounded-xl border-none focus:ring-2 focus:ring-blue-500" placeholder="Qtd PNR" value={form.qtd_pnr} onChange={e => setForm({...form, qtd_pnr: e.target.value})} required />
-                <input type="number" className="bg-slate-50 p-4 rounded-xl border-none focus:ring-2 focus:ring-blue-500" placeholder="Qtd Civis" value={form.qtd_civis} onChange={e => setForm({...form, qtd_civis: e.target.value})} required />
-                <input type="number" step="0.01" className="bg-slate-50 p-4 rounded-xl border-none focus:ring-2 focus:ring-blue-500 md:col-span-2" placeholder="Despesa Estimada" value={form.despesa_estimada} onChange={e => setForm({...form, despesa_estimada: e.target.value})} required />
-                <div className="md:col-span-2 flex gap-4">
-                  <button className="flex-1 bg-blue-900 text-white p-4 rounded-xl font-black hover:bg-blue-800 transition-all">
-                    {editingId ? 'SALVAR ALTERAÇÕES' : 'CADASTRAR'}
-                  </button>
-                  {editingId && (
-                    <button type="button" onClick={() => {setEditingId(null); setForm({nome:'',endereco:'',qtd_pnr:'',qtd_civis:'',despesa_estimada:''})}} className="bg-slate-200 text-slate-600 px-6 rounded-xl font-black">CANCELAR</button>
-                  )}
-                </div>
-              </form>
-              <div className="bg-white rounded-3xl shadow-sm overflow-hidden border">
-                <table className="w-full text-left">
-                  <tbody className="divide-y">
+                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-black text-slate-400 uppercase ml-1">Nome do Condomínio</label>
+                    <input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} required />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-black text-slate-400 uppercase ml-1">Endereço Completo</label>
+                    <input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.endereco} onChange={e => setForm({...form, endereco: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd PNR</label>
+                    <input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.qtd_pnr} onChange={e => setForm({...form, qtd_pnr: e.target.value})} required />
+                  </div>
+                  <div>
+                    <label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd Civis</label>
+                    <input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.qtd_civis} onChange={e => setForm({...form, qtd_civis: e.target.value})} required />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-black text-slate-400 uppercase ml-1">Despesa Estimada (Valor Base)</label>
+                    <input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500 text-2xl font-black text-blue-900" value={form.despesa_estimada} onChange={e => setForm({...form, despesa_estimada: e.target.value})} required />
+                  </div>
+                  <div className="md:col-span-2 flex gap-4">
+                    <button className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 shadow-xl shadow-blue-100 transition-all active:scale-95">
+                      {editingId ? 'SALVAR ALTERAÇÕES' : 'SALVAR CONDOMÍNIO'}
+                    </button>
+                    {editingId && (
+                      <button type="button" onClick={() => {setEditingId(null); setForm({nome:'',endereco:'',qtd_pnr:'',qtd_civis:'',despesa_estimada:''})}} className="bg-slate-200 text-slate-600 px-8 rounded-2xl font-black hover:bg-slate-300 transition-all">CANCELAR</button>
+                    )}
+                  </div>
+                </form>
+              </div>
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="p-6 bg-slate-50 border-b border-slate-100 flex justify-between items-center"><h2 className="text-sm font-black text-slate-400 uppercase tracking-widest">Condomínios Ativos</h2><span className="bg-blue-900 text-white px-3 py-1 rounded-full text-xs font-black">{condominios.length}</span></div>
+                <table className="w-full text-left border-collapse">
+                  <tbody className="divide-y divide-slate-100">
                     {condominios.map(c => (
-                      <tr key={c.id} className="hover:bg-slate-50">
+                      <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                         <td className="p-6 font-bold text-slate-700">{c.nome}</td>
                         <td className="p-6 text-right flex justify-end gap-2">
-                          <button onClick={() => handleEdit(c)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-lg"><Pencil size={20}/></button>
-                          <button onClick={async () => { if(confirm('Excluir?')) { await supabase.from('condominios').delete().eq('id', c.id); fetchCondominios(); } }} className="text-red-400 p-2 hover:bg-red-50 rounded-lg"><Trash2 size={20}/></button>
+                          <button onClick={() => handleEdit(c)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl transition-all" title="Editar"><Pencil size={20}/></button>
+                          <button onClick={async () => { if(confirm('Excluir?')) { await supabase.from('condominios').delete().eq('id', c.id); fetchCondominios(); } }} className="text-red-400 p-2 hover:bg-red-50 rounded-xl transition-all" title="Excluir"><Trash2 size={20}/></button>
                         </td>
                       </tr>
                     ))}

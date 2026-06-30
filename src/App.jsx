@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import {
   Building2,
   MapPin,
@@ -17,954 +17,983 @@ import {
   ArrowUpCircle,
   ExternalLink,
   X,
-} from 'lucide-react'
+} from 'lucide-react';
 
-const SUPABASE_URL = 'https://bjeklbralayvulcuqiqe.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0'
+// =============================================================================
+// CONFIGURAÇÃO FIXA DO SUPABASE (auto-contido, sem variáveis de ambiente)
+// =============================================================================
+const SUPABASE_URL = 'https://bjeklbralayvulcuqiqe.supabase.co';
+const SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+let supabase = null;
+try {
+  supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true },
+    global: { headers: { 'x-application-name': 'condo-admin' } },
+  });
+} catch (err) {
+  console.error('Falha ao criar cliente Supabase:', err);
+}
 
-const TABLE = 'condominios'
-
-const INITIAL_FORM = {
+// =============================================================================
+// MODELO / ESQUEMA PADRÃO
+// =============================================================================
+const EMPTY_FORM = {
+  id: null,
   nome: '',
   endereco: '',
   cnpj: '',
-  qtd_pnr: '',
-  qtd_civis: '',
-  despesa_estimada: '',
-  dados_bancarios: '',
-  saldo_fundo_reserva: '',
-  projetos_incendio: '',
-  possui_elevadores: false,
-  qtd_elevadores: '',
-  empresa_elevadores: '',
-  status_manutencao: '',
-}
+  banco: '',
+  agencia: '',
+  conta: '',
+  qtd_pnr: 0,
+  qtd_civis: 0,
+  despesa_estimada: 0,
+  elevadores: '',
+  incendio: '',
+  responsavel: '',
+  telefone: '',
+  email: '',
+};
 
-function formatCurrency(value) {
-  if (value === null || value === undefined || value === '') return 'R$ 0,00'
-  const num = Number(value)
-  if (Number.isNaN(num)) return 'R$ 0,00'
-  return new Intl.NumberFormat('pt-BR', {
-    style: 'currency',
-    currency: 'BRL',
-  }).format(num)
-}
+const safeNumber = (value) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
 
-function formatNumber(value) {
-  if (value === null || value === undefined || value === '') return '0'
-  const num = Number(value)
-  if (Number.isNaN(num)) return '0'
-  return new Intl.NumberFormat('pt-BR').format(num)
-}
+const calcularTaxa = (despesa, pnr, civis) => {
+  const total = safeNumber(pnr) + safeNumber(civis);
+  const base = safeNumber(despesa);
+  if (total <= 0 || base <= 0) return 0;
+  return base / total / 0.905;
+};
 
-function calculateRate(condo) {
-  const despesa = Number(condo.despesa_estimada) || 0
-  const pnr = Number(condo.qtd_pnr) || 0
-  const civis = Number(condo.qtd_civis) || 0
-  const total = pnr + civis
-  if (total <= 0) return null
-  return despesa / total / 0.905
-}
+const formatCurrency = (value) =>
+  value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-function FireProjectLink({ text }) {
-  if (!text || typeof text !== 'string') return null
-  const tokens = text.split(/\s+/)
+const formatNumber = (value) =>
+  value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const cnpjMask = (value) =>
+  String(value || '')
+    .replace(/\D/g, '')
+    .replace(/^(\d{2})(\d)/, '$1.$2')
+    .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d)/, '.$1/$2')
+    .replace(/(\d{4})(\d)/, '$1-$2')
+    .slice(0, 18);
+
+// =============================================================================
+// COMPONENTE DE ERRO GLOBAL
+// =============================================================================
+function GlobalError({ error, onReset }) {
+  if (!error) return null;
   return (
-    <div className="space-y-1">
-      {tokens.map((token, idx) => {
-        if (token.toLowerCase().includes('http')) {
-          return (
-            <a
-              key={idx}
-              href={token}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-emerald-600 hover:text-emerald-700 font-semibold underline break-all"
-            >
-              {token}
-              <ExternalLink className="w-3 h-3 flex-shrink-0" />
-            </a>
-          )
-        }
-        return <span key={idx}>{token} </span>
-      })}
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
+      <div className="max-w-lg w-full bg-white rounded-2xl shadow-xl border-l-8 border-red-600 p-8">
+        <div className="flex items-center gap-3 text-red-700 mb-4">
+          <XCircle className="w-8 h-8" />
+          <h1 className="text-2xl font-bold">Erro inesperado</h1>
+        </div>
+        <p className="text-slate-700 mb-4">
+          O aplicativo encontrou uma falha de execução. Tente recarregar a página.
+        </p>
+        {process.env.NODE_ENV === 'development' && (
+          <pre className="bg-slate-100 p-4 rounded-lg text-xs text-slate-800 overflow-auto max-h-64">
+            {error.stack || error.message || String(error)}
+          </pre>
+        )}
+        <div className="mt-6 flex gap-3">
+          <button
+            onClick={onReset}
+            className="px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition-colors"
+          >
+            Tentar novamente
+          </button>
+        </div>
+      </div>
     </div>
-  )
+  );
 }
 
-export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard')
-  const [condos, setCondos] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState(null)
-  const [message, setMessage] = useState(null)
-  const [formData, setFormData] = useState(INITIAL_FORM)
-  const [editingId, setEditingId] = useState(null)
-  const [modalCondo, setModalCondo] = useState(null)
-  const [deleteId, setDeleteId] = useState(null)
-
+// =============================================================================
+// MODAL REUTILIZÁVEL
+// =============================================================================
+function Modal({ isOpen, onClose, title, children }) {
+  const ref = useRef(null);
   useEffect(() => {
-    fetchCondos()
-  }, [])
+    if (!isOpen) return;
+    const handleKey = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [isOpen, onClose]);
 
-  useEffect(() => {
-    function handleEsc(e) {
-      if (e.key === 'Escape') {
-        setModalCondo(null)
-        setDeleteId(null)
-      }
-    }
-    window.addEventListener('keydown', handleEsc)
-    return () => window.removeEventListener('keydown', handleEsc)
-  }, [])
-
-  async function fetchCondos() {
-    setLoading(true)
-    setError(null)
-    try {
-      const { data, error: sbError } = await supabase
-        .from(TABLE)
-        .select('*')
-        .order('nome', { ascending: true })
-      if (sbError) throw sbError
-      setCondos(data || [])
-    } catch (err) {
-      setError(err?.message || 'Erro ao carregar condomínios.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  function handleInputChange(e) {
-    const { name, value, type, checked } = e.target
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }))
-  }
-
-  function resetForm() {
-    setFormData(INITIAL_FORM)
-    setEditingId(null)
-  }
-
-  function editCondo(condo) {
-    setFormData({
-      nome: condo.nome || '',
-      endereco: condo.endereco || '',
-      cnpj: condo.cnpj || '',
-      qtd_pnr: condo.qtd_pnr ?? '',
-      qtd_civis: condo.qtd_civis ?? '',
-      despesa_estimada: condo.despesa_estimada ?? '',
-      dados_bancarios: condo.dados_bancarios || '',
-      saldo_fundo_reserva: condo.saldo_fundo_reserva ?? '',
-      projetos_incendio: condo.projetos_incendio || '',
-      possui_elevadores: !!condo.possui_elevadores,
-      qtd_elevadores: condo.qtd_elevadores ?? '',
-      empresa_elevadores: condo.empresa_elevadores || '',
-      status_manutencao: condo.status_manutencao || '',
-    })
-    setEditingId(condo.id)
-    setActiveTab('manage')
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setSaving(true)
-    setError(null)
-    setMessage(null)
-
-    const payload = {
-      nome: formData.nome.trim(),
-      endereco: formData.endereco.trim(),
-      cnpj: formData.cnpj.trim(),
-      qtd_pnr: Number(formData.qtd_pnr) || 0,
-      qtd_civis: Number(formData.qtd_civis) || 0,
-      despesa_estimada: Number(formData.despesa_estimada) || 0,
-      dados_bancarios: formData.dados_bancarios.trim(),
-      saldo_fundo_reserva: Number(formData.saldo_fundo_reserva) || 0,
-      projetos_incendio: formData.projetos_incendio.trim(),
-      possui_elevadores: !!formData.possui_elevadores,
-      qtd_elevadores: formData.possui_elevadores
-        ? Number(formData.qtd_elevadores) || 0
-        : 0,
-      empresa_elevadores: formData.possui_elevadores
-        ? formData.empresa_elevadores.trim()
-        : '',
-      status_manutencao: formData.status_manutencao.trim(),
-    }
-
-    if (!payload.nome) {
-      setError('O campo Nome é obrigatório.')
-      setSaving(false)
-      return
-    }
-
-    try {
-      let result
-      if (editingId) {
-        const { data, error: sbError } = await supabase
-          .from(TABLE)
-          .update(payload)
-          .eq('id', editingId)
-          .select()
-          .single()
-        if (sbError) throw sbError
-        result = data
-        setMessage('Condomínio atualizado com sucesso.')
-      } else {
-        const { data, error: sbError } = await supabase
-          .from(TABLE)
-          .insert(payload)
-          .select()
-          .single()
-        if (sbError) throw sbError
-        result = data
-        setMessage('Condomínio cadastrado com sucesso.')
-      }
-
-      setCondos((prev) => {
-        const exists = prev.find((c) => c.id === result.id)
-        if (exists) {
-          return prev.map((c) => (c.id === result.id ? result : c))
-        }
-        return [...prev, result]
-      })
-      resetForm()
-    } catch (err) {
-      setError(err?.message || 'Erro ao salvar condomínio.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function confirmDelete() {
-    if (!deleteId) return
-    setError(null)
-    setMessage(null)
-    try {
-      const { error: sbError } = await supabase
-        .from(TABLE)
-        .delete()
-        .eq('id', deleteId)
-      if (sbError) throw sbError
-      setCondos((prev) => prev.filter((c) => c.id !== deleteId))
-      setMessage('Condomínio excluído com sucesso.')
-    } catch (err) {
-      setError(err?.message || 'Erro ao excluir condomínio.')
-    } finally {
-      setDeleteId(null)
-    }
-  }
-
-  const totalCondominios = condos.length
-  const totalPessoas = useMemo(
-    () =>
-      condos.reduce(
-        (acc, c) =>
-          acc + (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0),
-        0
-      ),
-    [condos]
-  )
-  const totalDespesas = useMemo(
-    () => condos.reduce((acc, c) => acc + (Number(c.despesa_estimada) || 0), 0),
-    [condos]
-  )
-
-  function renderLabel(text) {
-    return (
-      <label className="block text-xs font-black text-slate-400 uppercase tracking-wide mb-1">
-        {text}
-      </label>
-    )
-  }
-
+  if (!isOpen) return null;
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-800">
-      <header className="bg-gradient-to-r from-slate-900 to-blue-900 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
-          <div className="flex items-center gap-3">
-            <div className="bg-emerald-500 p-2 rounded-lg shadow-md">
-              <Building2 className="w-7 h-7 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black tracking-tight">
-                Sistema de Condomínios
-              </h1>
-              <p className="text-sm text-slate-300">
-                Gestão integrada de taxas, fundos e manutenções
-              </p>
-            </div>
-          </div>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 backdrop-blur-sm p-4"
+      onClick={(e) => {
+        if (e.target === ref.current || e.currentTarget === e.target) onClose();
+      }}
+      ref={ref}
+    >
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50 rounded-t-2xl">
+          <h3 className="text-lg font-bold text-blue-950">{title}</h3>
+          <button
+            onClick={onClose}
+            aria-label="Fechar"
+            className="p-2 rounded-full hover:bg-slate-200 text-slate-600 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
-      </header>
+        <div className="p-6">{children}</div>
+      </div>
+    </div>
+  );
+}
 
-      <nav className="bg-white border-b border-slate-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex gap-2">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition ${
-                activeTab === 'dashboard'
-                  ? 'border-emerald-500 text-emerald-600'
-                  : 'border-transparent text-slate-500 hover:text-blue-900'
-              }`}
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              Dashboard
-            </button>
-            <button
-              onClick={() => setActiveTab('manage')}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-bold border-b-2 transition ${
-                activeTab === 'manage'
-                  ? 'border-emerald-500 text-emerald-600'
-                  : 'border-transparent text-slate-500 hover:text-blue-900'
-              }`}
-            >
-              <Settings className="w-4 h-4" />
-              Gerenciar
-            </button>
-          </div>
-        </div>
-      </nav>
+// =============================================================================
+// APP PRINCIPAL
+// =============================================================================
+export default function App() {
+  // ---------------------------------------------------------------------------
+  // ESTADOS GLOBAIS
+  // ---------------------------------------------------------------------------
+  const [runtimeError, setRuntimeError] = useState(null);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [loading, setLoading] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [condominios, setCondominios] = useState([]);
+  const [selectedCondominio, setSelectedCondominio] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [isEditing, setIsEditing] = useState(false);
+  const [search, setSearch] = useState('');
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {message && (
-          <div className="mb-4 bg-emerald-50 border-l-4 border-emerald-500 text-emerald-800 px-4 py-3 rounded shadow-sm flex items-center justify-between">
-            <span className="font-semibold text-sm">{message}</span>
-            <button
-              onClick={() => setMessage(null)}
-              className="text-emerald-700 hover:text-emerald-900"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-        {error && (
-          <div className="mb-4 bg-red-50 border-l-4 border-red-500 text-red-800 px-4 py-3 rounded shadow-sm flex items-center justify-between">
-            <span className="font-semibold text-sm">{error}</span>
-            <button
-              onClick={() => setError(null)}
-              className="text-red-700 hover:text-red-900"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+  // ---------------------------------------------------------------------------
+  // TOAST HELPER
+  // ---------------------------------------------------------------------------
+  const showToast = (message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
-        {activeTab === 'dashboard' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200 flex items-center gap-4">
-                <div className="bg-blue-900 text-white p-3 rounded-lg">
-                  <Building2 className="w-6 h-6" />
+  // ---------------------------------------------------------------------------
+  // CARREGAMENTO INICIAL
+  // ---------------------------------------------------------------------------
+  const loadCondominios = async () => {
+    setLoading(true);
+    try {
+      if (!supabase) throw new Error('Cliente Supabase não inicializado.');
+      const { data, error } = await supabase
+        .from('condominios')
+        .select('*')
+        .order('nome', { ascending: true });
+      if (error) throw error;
+      setCondominios(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('Erro ao carregar condomínios:', err);
+      showToast('Erro ao carregar dados. Modo offline ativado.', 'error');
+      setCondominios([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCondominios();
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // FILTRO DE BUSCA
+  // ---------------------------------------------------------------------------
+  const filteredCondominios = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return condominios;
+    return condominios.filter((c) =>
+      String(c.nome || '').toLowerCase().includes(term)
+    );
+  }, [condominios, search]);
+
+  // ---------------------------------------------------------------------------
+  // FORMULÁRIO
+  // ---------------------------------------------------------------------------
+  const handleFormChange = (field, value) => {
+    setForm((prev) => {
+      let next = { ...prev, [field]: value };
+      if (field === 'cnpj') next.cnpj = cnpjMask(value);
+      return next;
+    });
+  };
+
+  const resetForm = () => {
+    setForm({ ...EMPTY_FORM });
+    setIsEditing(false);
+  };
+
+  const startEdit = (cond) => {
+    setForm({ ...EMPTY_FORM, ...cond });
+    setIsEditing(true);
+    setActiveTab('gerenciar');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const startNew = () => {
+    resetForm();
+    setActiveTab('gerenciar');
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      if (!supabase) throw new Error('Cliente Supabase não inicializado.');
+      const payload = {
+        ...form,
+        qtd_pnr: safeNumber(form.qtd_pnr),
+        qtd_civis: safeNumber(form.qtd_civis),
+        despesa_estimada: safeNumber(form.despesa_estimada),
+      };
+
+      if (isEditing && form.id) {
+        const { error } = await supabase
+          .from('condominios')
+          .update(payload)
+          .eq('id', form.id);
+        if (error) throw error;
+        showToast('Condomínio atualizado com sucesso!');
+      } else {
+        const { error } = await supabase.from('condominios').insert(payload);
+        if (error) throw error;
+        showToast('Condomínio cadastrado com sucesso!');
+      }
+      resetForm();
+      await loadCondominios();
+      setActiveTab('dashboard');
+    } catch (err) {
+      console.error('Erro ao salvar condomínio:', err);
+      showToast('Erro ao salvar: ' + (err.message || 'tente novamente'), 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('Deseja realmente excluir este condomínio?')) return;
+    setLoading(true);
+    try {
+      if (!supabase) throw new Error('Cliente Supabase não inicializado.');
+      const { error } = await supabase.from('condominios').delete().eq('id', id);
+      if (error) throw error;
+      showToast('Condomínio removido com sucesso!');
+      if (form.id === id) resetForm();
+      await loadCondominios();
+    } catch (err) {
+      console.error('Erro ao excluir condomínio:', err);
+      showToast('Erro ao excluir: ' + (err.message || 'tente novamente'), 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // MODAL FICHA TÉCNICA
+  // ---------------------------------------------------------------------------
+  const openFicha = (cond) => {
+    setSelectedCondominio(cond);
+    setIsModalOpen(true);
+  };
+
+  const closeFicha = () => {
+    setSelectedCondominio(null);
+    setIsModalOpen(false);
+  };
+
+  // ---------------------------------------------------------------------------
+  // RENDERIZAÇÃO COM BOUNDARY DE ERRO
+  // ---------------------------------------------------------------------------
+  try {
+    if (runtimeError) {
+      return <GlobalError error={runtimeError} onReset={() => setRuntimeError(null)} />;
+    }
+
+    return (
+      <div className="min-h-screen bg-slate-50 text-slate-800">
+        {/* HEADER */}
+        <header className="bg-gradient-to-r from-blue-950 to-emerald-800 text-white shadow-lg">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex items-center justify-between h-16">
+              <div className="flex items-center gap-3">
+                <div className="bg-white/10 p-2 rounded-lg">
+                  <Building2 className="w-7 h-7 text-emerald-300" />
                 </div>
                 <div>
-                  <p className="text-xs font-black text-slate-400 uppercase">
-                    Condomínios
-                  </p>
-                  <p className="text-2xl font-black text-slate-800">
-                    {formatNumber(totalCondominios)}
-                  </p>
+                  <h1 className="text-xl font-bold tracking-tight">CondoAdmin</h1>
+                  <p className="text-xs text-emerald-100">Gestão de Condomínios</p>
                 </div>
               </div>
-              <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200 flex items-center gap-4">
-                <div className="bg-emerald-500 text-white p-3 rounded-lg">
-                  <Users className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-xs font-black text-slate-400 uppercase">
-                    Pessoas
-                  </p>
-                  <p className="text-2xl font-black text-slate-800">
-                    {formatNumber(totalPessoas)}
-                  </p>
-                </div>
-              </div>
-              <div className="bg-white rounded-xl p-5 shadow-sm border border-slate-200 flex items-center gap-4">
-                <div className="bg-blue-700 text-white p-3 rounded-lg">
-                  <DollarSign className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-xs font-black text-slate-400 uppercase">
-                    Despesas Totais
-                  </p>
-                  <p className="text-2xl font-black text-slate-800">
-                    {formatCurrency(totalDespesas)}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-emerald-500" />
-                <span className="ml-3 text-slate-500 font-semibold">
-                  Carregando...
-                </span>
-              </div>
-            ) : condos.length === 0 ? (
-              <div className="bg-white rounded-xl border border-dashed border-slate-300 p-10 text-center">
-                <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                <h3 className="text-lg font-bold text-slate-700">
-                  Nenhum condomínio cadastrado
-                </h3>
-                <p className="text-sm text-slate-500 mt-1">
-                  Vá até a aba Gerenciar para adicionar o primeiro condomínio.
-                </p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                {condos.map((condo) => {
-                  const rate = calculateRate(condo)
-                  return (
-                    <button
-                      key={condo.id}
-                      onClick={() => setModalCondo(condo)}
-                      className="text-left bg-white rounded-xl shadow-sm border border-slate-200 hover:shadow-md hover:border-emerald-400 transition p-5 group"
-                    >
-                      <div className="flex justify-between items-start mb-4">
-                        <div className="flex items-center gap-3">
-                          <div className="bg-blue-900 text-white p-2 rounded-lg group-hover:bg-emerald-500 transition">
-                            <Building2 className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <h3 className="font-black text-slate-800 leading-tight">
-                              {condo.nome}
-                            </h3>
-                            <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
-                              <MapPin className="w-3 h-3" />
-                              {condo.endereco}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-3 mb-4">
-                        <div className="bg-slate-50 rounded-lg p-3">
-                          <p className="text-[10px] font-black text-slate-400 uppercase">
-                            PNR / Civis
-                          </p>
-                          <p className="text-lg font-black text-slate-800">
-                            {formatNumber(condo.qtd_pnr)} /{' '}
-                            {formatNumber(condo.qtd_civis)}
-                          </p>
-                        </div>
-                        <div className="bg-slate-50 rounded-lg p-3">
-                          <p className="text-[10px] font-black text-slate-400 uppercase">
-                            Despesa Estimada
-                          </p>
-                          <p className="text-lg font-black text-emerald-600">
-                            {formatCurrency(condo.despesa_estimada)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between border-t border-slate-100 pt-3">
-                        <div>
-                          <p className="text-[10px] font-black text-slate-400 uppercase">
-                            Taxa Unitária
-                          </p>
-                          <p className="text-lg font-black text-blue-900">
-                            {rate ? formatCurrency(rate) : '—'}
-                          </p>
-                        </div>
-                        <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
-                          Ver ficha <ArrowUpCircle className="w-3 h-3" />
-                        </span>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'manage' && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <div className="flex items-center gap-2 mb-5">
-                <div className="bg-emerald-500 text-white p-2 rounded-lg">
-                  {editingId ? (
-                    <Pencil className="w-5 h-5" />
-                  ) : (
-                    <PlusCircle className="w-5 h-5" />
-                  )}
-                </div>
-                <h2 className="text-lg font-black text-slate-800">
-                  {editingId ? 'Editar Condomínio' : 'Cadastrar Condomínio'}
-                </h2>
-                {editingId && (
-                  <button
-                    onClick={resetForm}
-                    className="ml-auto text-xs font-bold text-slate-500 hover:text-red-600 flex items-center gap-1"
-                  >
-                    <XCircle className="w-4 h-4" />
-                    Cancelar
-                  </button>
-                )}
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="md:col-span-2">
-                    {renderLabel('Nome')}
-                    <input
-                      type="text"
-                      name="nome"
-                      value={formData.nome}
-                      onChange={handleInputChange}
-                      placeholder="Nome do condomínio"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    {renderLabel('Endereço')}
-                    <input
-                      type="text"
-                      name="endereco"
-                      value={formData.endereco}
-                      onChange={handleInputChange}
-                      placeholder="Endereço completo"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    {renderLabel('CNPJ')}
-                    <input
-                      type="text"
-                      name="cnpj"
-                      value={formData.cnpj}
-                      onChange={handleInputChange}
-                      placeholder="00.000.000/0000-00"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      {renderLabel('Qtd. PNR')}
-                      <input
-                        type="number"
-                        name="qtd_pnr"
-                        min="0"
-                        value={formData.qtd_pnr}
-                        onChange={handleInputChange}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div>
-                      {renderLabel('Qtd. Civis')}
-                      <input
-                        type="number"
-                        name="qtd_civis"
-                        min="0"
-                        value={formData.qtd_civis}
-                        onChange={handleInputChange}
-                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    {renderLabel('Despesa Estimada')}
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                      <input
-                        type="number"
-                        name="despesa_estimada"
-                        min="0"
-                        step="0.01"
-                        value={formData.despesa_estimada}
-                        onChange={handleInputChange}
-                        className="w-full rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    {renderLabel('Saldo Fundo Reserva')}
-                    <div className="relative">
-                      <CreditCard className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                      <input
-                        type="number"
-                        name="saldo_fundo_reserva"
-                        min="0"
-                        step="0.01"
-                        value={formData.saldo_fundo_reserva}
-                        onChange={handleInputChange}
-                        className="w-full rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  {renderLabel('Dados Bancários')}
-                  <textarea
-                    name="dados_bancarios"
-                    rows={2}
-                    value={formData.dados_bancarios}
-                    onChange={handleInputChange}
-                    placeholder="Banco, agência, conta, titularidade..."
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  {renderLabel('Projetos de Incêndio')}
-                  <div className="relative">
-                    <Flame className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                    <textarea
-                      name="projetos_incendio"
-                      rows={2}
-                      value={formData.projetos_incendio}
-                      onChange={handleInputChange}
-                      placeholder="Cole o link do projeto ou descrição"
-                      className="w-full rounded-lg border border-slate-300 pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-
-                <div className="border border-slate-200 rounded-lg p-4 bg-slate-50">
-                  <div className="flex items-center gap-3 mb-3">
-                    <input
-                      type="checkbox"
-                      id="possui_elevadores"
-                      name="possui_elevadores"
-                      checked={formData.possui_elevadores}
-                      onChange={handleInputChange}
-                      className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
-                    />
-                    <label
-                      htmlFor="possui_elevadores"
-                      className="text-sm font-black text-slate-700"
-                    >
-                      Possui Elevadores
-                    </label>
-                  </div>
-
-                  {formData.possui_elevadores && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        {renderLabel('Qtd. Elevadores')}
-                        <input
-                          type="number"
-                          name="qtd_elevadores"
-                          min="0"
-                          value={formData.qtd_elevadores}
-                          onChange={handleInputChange}
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        {renderLabel('Empresa de Elevadores')}
-                        <input
-                          type="text"
-                          name="empresa_elevadores"
-                          value={formData.empresa_elevadores}
-                          onChange={handleInputChange}
-                          placeholder="Nome da empresa"
-                          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  {renderLabel('Status de Manutenção')}
-                  <textarea
-                    name="status_manutencao"
-                    rows={2}
-                    value={formData.status_manutencao}
-                    onChange={handleInputChange}
-                    placeholder="Status atual das manutenções"
-                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
-                  />
-                </div>
-
+              <nav className="flex items-center gap-2">
                 <button
-                  type="submit"
-                  disabled={saving}
-                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-2.5 rounded-lg shadow-md transition flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                  onClick={() => setActiveTab('dashboard')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                    activeTab === 'dashboard'
+                      ? 'bg-white/20 text-white shadow'
+                      : 'text-emerald-100 hover:bg-white/10'
+                  }`}
                 >
-                  {saving ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Salvando...
-                    </>
-                  ) : editingId ? (
-                    <>
-                      <Pencil className="w-4 h-4" />
-                      Atualizar Condomínio
-                    </>
-                  ) : (
-                    <>
-                      <PlusCircle className="w-4 h-4" />
-                      Cadastrar Condomínio
-                    </>
-                  )}
+                  <LayoutDashboard className="w-4 h-4" />
+                  Dashboard
                 </button>
-              </form>
+                <button
+                  onClick={() => setActiveTab('gerenciar')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all ${
+                    activeTab === 'gerenciar'
+                      ? 'bg-white/20 text-white shadow'
+                      : 'text-emerald-100 hover:bg-white/10'
+                  }`}
+                >
+                  <Settings className="w-4 h-4" />
+                  Gerenciar
+                </button>
+              </nav>
             </div>
+          </div>
+        </header>
 
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-              <div className="flex items-center gap-2 mb-5">
-                <div className="bg-blue-900 text-white p-2 rounded-lg">
-                  <Building2 className="w-5 h-5" />
+        {/* TOAST */}
+        {toast && (
+          <div
+            className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-lg shadow-xl text-white font-medium transition-all ${
+              toast.type === 'error' ? 'bg-red-600' : 'bg-emerald-600'
+            }`}
+          >
+            {toast.message}
+          </div>
+        )}
+
+        {/* CONTEÚDO PRINCIPAL */}
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {/* LOADER GLOBAL */}
+          {loading && (
+            <div className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-white/60 backdrop-blur-sm">
+              <Loader2 className="w-10 h-10 text-emerald-600 animate-spin" />
+              <p className="mt-3 text-slate-600 font-medium">Carregando...</p>
+            </div>
+          )}
+
+          {/* ABA DASHBOARD */}
+          {activeTab === 'dashboard' && (
+            <section>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-blue-950">Dashboard</h2>
+                  <p className="text-slate-500">Visão geral dos condomínios cadastrados</p>
                 </div>
-                <h2 className="text-lg font-black text-slate-800">
-                  Condomínios Cadastrados
-                </h2>
+                <button
+                  onClick={startNew}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow transition-colors"
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  Novo Condomínio
+                </button>
               </div>
 
-              {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-6 h-6 animate-spin text-emerald-500" />
-                </div>
-              ) : condos.length === 0 ? (
-                <div className="text-center py-10 text-slate-500">
-                  <Building2 className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                  <p className="font-semibold text-sm">Nenhum registro</p>
+              {condominios.length === 0 ? (
+                <div className="bg-white rounded-2xl shadow p-12 text-center">
+                  <Building2 className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-slate-700">
+                    Nenhum condomínio cadastrado
+                  </h3>
+                  <p className="text-slate-500 mt-1">
+                    Clique em "Novo Condomínio" para começar.
+                  </p>
                 </div>
               ) : (
-                <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
-                  {condos.map((condo) => (
-                    <div
-                      key={condo.id}
-                      className="flex items-center justify-between p-4 rounded-lg border border-slate-200 hover:border-emerald-400 hover:shadow-sm transition bg-slate-50"
-                    >
-                      <div>
-                        <p className="font-black text-slate-800 text-sm">
-                          {condo.nome}
-                        </p>
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {condo.endereco}
-                        </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {condominios.map((c) => {
+                    const taxa = calcularTaxa(
+                      c.despesa_estimada,
+                      c.qtd_pnr,
+                      c.qtd_civis
+                    );
+                    return (
+                      <div
+                        key={c.id || Math.random()}
+                        className="group bg-white rounded-2xl shadow hover:shadow-xl transition-all border border-slate-100 overflow-hidden"
+                      >
+                        <div className="h-2 bg-gradient-to-r from-blue-950 to-emerald-600" />
+                        <div className="p-6">
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2.5 bg-blue-50 rounded-lg">
+                                <Building2 className="w-6 h-6 text-blue-800" />
+                              </div>
+                              <div>
+                                <h3 className="font-bold text-slate-800 line-clamp-1">
+                                  {c.nome || 'Sem nome'}
+                                </h3>
+                                <div className="flex items-center gap-1 text-xs text-slate-500 mt-0.5">
+                                  <MapPin className="w-3 h-3" />
+                                  {c.endereco || 'Endereço não informado'}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 mb-5">
+                            <div className="bg-slate-50 rounded-lg p-3">
+                              <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+                                <Users className="w-3.5 h-3.5" />
+                                PNR + Civis
+                              </div>
+                              <p className="text-lg font-bold text-blue-950">
+                                {safeNumber(c.qtd_pnr) + safeNumber(c.qtd_civis)}
+                              </p>
+                            </div>
+                            <div className="bg-slate-50 rounded-lg p-3">
+                              <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+                                <DollarSign className="w-3.5 h-3.5" />
+                                Taxa/und
+                              </div>
+                              <p className="text-lg font-bold text-emerald-700">
+                                {formatCurrency(taxa)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => openFicha(c)}
+                              className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-blue-950 hover:bg-blue-900 text-white text-sm font-medium transition-colors"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                              Ficha Técnica
+                            </button>
+                            <button
+                              onClick={() => startEdit(c)}
+                              className="p-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
+                              aria-label="Editar"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(c.id)}
+                              className="p-2 rounded-lg border border-slate-200 hover:bg-red-50 text-red-600 transition-colors"
+                              aria-label="Excluir"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => editCondo(condo)}
-                          title="Editar"
-                          className="p-2 text-blue-700 hover:bg-blue-50 rounded-lg transition"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setDeleteId(condo.id)}
-                          title="Excluir"
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
-            </div>
-          </div>
-        )}
-      </main>
+            </section>
+          )}
 
-      {modalCondo && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setModalCondo(null)
-          }}
-        >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto">
-            <div className="bg-gradient-to-r from-slate-900 to-blue-900 p-5 sm:p-6 flex items-start justify-between sticky top-0">
-              <div className="flex items-center gap-3">
-                <div className="bg-emerald-500 p-2 rounded-lg">
-                  <Building2 className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-black text-white">
-                    {modalCondo.nome}
-                  </h2>
-                  <p className="text-sm text-slate-300 flex items-center gap-1 mt-0.5">
-                    <MapPin className="w-3 h-3" />
-                    {modalCondo.endereco}
-                  </p>
+          {/* ABA GERENCIAR */}
+          {activeTab === 'gerenciar' && (
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* FORMULÁRIO */}
+              <div className="lg:col-span-1">
+                <div className="bg-white rounded-2xl shadow border border-slate-100 sticky top-6">
+                  <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl">
+                    <h2 className="text-lg font-bold text-blue-950 flex items-center gap-2">
+                      {isEditing ? <Pencil className="w-5 h-5" /> : <PlusCircle className="w-5 h-5" />}
+                      {isEditing ? 'Editar Condomínio' : 'Cadastrar Condomínio'}
+                    </h2>
+                  </div>
+                  <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Nome do Condomínio
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={form.nome}
+                        onChange={(e) => handleFormChange('nome', e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                        placeholder="Ex: Residencial Solaris"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Endereço
+                      </label>
+                      <div className="relative">
+                        <MapPin className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                        <input
+                          type="text"
+                          required
+                          value={form.endereco}
+                          onChange={(e) => handleFormChange('endereco', e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                          placeholder="Rua, número, bairro, cidade"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          CNPJ
+                        </label>
+                        <input
+                          type="text"
+                          value={form.cnpj}
+                          onChange={(e) => handleFormChange('cnpj', e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                          placeholder="00.000.000/0000-00"
+                          maxLength={18}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Banco
+                        </label>
+                        <div className="relative">
+                          <CreditCard className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                          <input
+                            type="text"
+                            value={form.banco}
+                            onChange={(e) => handleFormChange('banco', e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                            placeholder="Nome do banco"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Agência
+                        </label>
+                        <input
+                          type="text"
+                          value={form.agencia}
+                          onChange={(e) => handleFormChange('agencia', e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                          placeholder="0000"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Conta
+                        </label>
+                        <input
+                          type="text"
+                          value={form.conta}
+                          onChange={(e) => handleFormChange('conta', e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                          placeholder="00000-0"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Qtd. PNR
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={form.qtd_pnr}
+                          onChange={(e) => handleFormChange('qtd_pnr', e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Qtd. Civis
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={form.qtd_civis}
+                          onChange={(e) => handleFormChange('qtd_civis', e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Total
+                        </label>
+                        <div className="px-3 py-2 rounded-lg bg-slate-100 text-slate-700 font-medium">
+                          {safeNumber(form.qtd_pnr) + safeNumber(form.qtd_civis)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Despesa Estimada (R$)
+                      </label>
+                      <div className="relative">
+                        <DollarSign className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={form.despesa_estimada}
+                          onChange={(e) => handleFormChange('despesa_estimada', e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                          placeholder="0,00"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-100">
+                      <p className="text-xs font-medium text-emerald-800 mb-1">
+                        FÓRMULA DA TAXA
+                      </p>
+                      <p className="text-xs text-emerald-700 mb-2">
+                        (despesa / (PNR + Civis)) / 0.905
+                      </p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium text-slate-700">
+                          Taxa unitária estimada:
+                        </span>
+                        <span className="text-lg font-bold text-emerald-700">
+                          {formatCurrency(
+                            calcularTaxa(form.despesa_estimada, form.qtd_pnr, form.qtd_civis)
+                          )}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Elevadores
+                      </label>
+                      <div className="relative">
+                        <ArrowUpCircle className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                        <input
+                          type="text"
+                          value={form.elevadores}
+                          onChange={(e) => handleFormChange('elevadores', e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                          placeholder="Marcas / capacidade / manutenção"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        Sistema de Incêndio
+                      </label>
+                      <div className="relative">
+                        <Flame className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                        <input
+                          type="text"
+                          value={form.incendio}
+                          onChange={(e) => handleFormChange('incendio', e.target.value)}
+                          className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                          placeholder="Tipo / extintores / hidrantes"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Responsável
+                        </label>
+                        <div className="relative">
+                          <Users className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                          <input
+                            type="text"
+                            value={form.responsavel}
+                            onChange={(e) => handleFormChange('responsavel', e.target.value)}
+                            className="w-full pl-9 pr-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                            placeholder="Nome do síndico"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Telefone
+                        </label>
+                        <input
+                          type="tel"
+                          value={form.telefone}
+                          onChange={(e) => handleFormChange('telefone', e.target.value)}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                          placeholder="(00) 00000-0000"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">
+                        E-mail
+                      </label>
+                      <input
+                        type="email"
+                        value={form.email}
+                        onChange={(e) => handleFormChange('email', e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition"
+                        placeholder="contato@condominio.com"
+                      />
+                    </div>
+
+                    <div className="pt-2 flex gap-3">
+                      <button
+                        type="submit"
+                        disabled={loading}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white font-medium transition-colors"
+                      >
+                        {loading ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : isEditing ? (
+                          <Pencil className="w-4 h-4" />
+                        ) : (
+                          <PlusCircle className="w-4 h-4" />
+                        )}
+                        {isEditing ? 'Salvar Alterações' : 'Cadastrar'}
+                      </button>
+                      {isEditing && (
+                        <button
+                          type="button"
+                          onClick={resetForm}
+                          className="px-4 py-2.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 font-medium transition-colors"
+                        >
+                          Cancelar
+                        </button>
+                      )}
+                    </div>
+                  </form>
                 </div>
               </div>
-              <button
-                onClick={() => setModalCondo(null)}
-                className="text-white/80 hover:text-white transition"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
 
-            <div className="p-5 sm:p-6 space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1">
-                    CNPJ
-                  </p>
-                  <p className="text-sm font-black text-slate-800">
-                    {modalCondo.cnpj || '—'}
-                  </p>
-                </div>
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1">
-                    Qtd. PNR
-                  </p>
-                  <p className="text-sm font-black text-slate-800">
-                    {formatNumber(modalCondo.qtd_pnr)}
-                  </p>
-                </div>
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1">
-                    Qtd. Civis
-                  </p>
-                  <p className="text-sm font-black text-slate-800">
-                    {formatNumber(modalCondo.qtd_civis)}
-                  </p>
-                </div>
-                <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200">
-                  <p className="text-[10px] font-black text-emerald-600 uppercase mb-1">
-                    Taxa Unitária
-                  </p>
-                  <p className="text-lg font-black text-emerald-700">
-                    {formatCurrency(calculateRate(modalCondo))}
-                  </p>
-                </div>
-              </div>
+              {/* LISTA */}
+              <div className="lg:col-span-2">
+                <div className="bg-white rounded-2xl shadow border border-slate-100">
+                  <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 rounded-t-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <h2 className="text-lg font-bold text-blue-950">Lista de Condomínios</h2>
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Buscar por nome..."
+                      className="w-full sm:w-64 px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none text-sm"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="bg-white rounded-xl border border-slate-200 p-4">
-                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1">
-                    Despesa Estimada
-                  </p>
-                  <p className="text-lg font-black text-slate-800">
-                    {formatCurrency(modalCondo.despesa_estimada)}
-                  </p>
-                </div>
-                <div className="bg-white rounded-xl border border-slate-200 p-4">
-                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1">
-                    Saldo Fundo Reserva
-                  </p>
-                  <p className="text-lg font-black text-slate-800">
-                    {formatCurrency(modalCondo.saldo_fundo_reserva)}
-                  </p>
-                </div>
-                <div className="bg-white rounded-xl border border-slate-200 p-4 sm:col-span-2">
-                  <p className="text-[10px] font-black text-slate-400 uppercase mb-1 flex items-center gap-1">
-                    <CreditCard className="w-3 h-3" /> Dados Bancários
-                  </p>
-                  <p className="text-sm text-slate-700 whitespace-pre-wrap">
-                    {modalCondo.dados_bancarios || '—'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-2 flex items-center gap-1">
-                  <Flame className="w-3 h-3" /> Projetos de Incêndio
-                </p>
-                <div className="text-sm text-slate-700 whitespace-pre-wrap">
-                  {modalCondo.projetos_incendio ? (
-                    <FireProjectLink text={modalCondo.projetos_incendio} />
+                  {filteredCondominios.length === 0 ? (
+                    <div className="p-12 text-center">
+                      <Building2 className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                      <p className="text-slate-500">
+                        {search ? 'Nenhum resultado para a busca.' : 'Nenhum condomínio cadastrado.'}
+                      </p>
+                    </div>
                   ) : (
-                    '—'
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-100 text-slate-600">
+                          <tr>
+                            <th className="px-6 py-3 font-semibold">Condomínio</th>
+                            <th className="px-6 py-3 font-semibold">Unidades</th>
+                            <th className="px-6 py-3 font-semibold">Taxa/und</th>
+                            <th className="px-6 py-3 font-semibold text-right">Ações</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {filteredCondominios.map((c) => {
+                            const taxa = calcularTaxa(
+                              c.despesa_estimada,
+                              c.qtd_pnr,
+                              c.qtd_civis
+                            );
+                            return (
+                              <tr key={c.id || Math.random()} className="hover:bg-slate-50">
+                                <td className="px-6 py-4">
+                                  <div className="font-medium text-slate-800">{c.nome || '-'}</div>
+                                  <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                                    <MapPin className="w-3 h-3" />
+                                    {c.endereco || '-'}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  {safeNumber(c.qtd_pnr) + safeNumber(c.qtd_civis)}
+                                </td>
+                                <td className="px-6 py-4 font-semibold text-emerald-700">
+                                  {formatCurrency(taxa)}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center justify-end gap-2">
+                                    <button
+                                      onClick={() => openFicha(c)}
+                                      className="p-2 rounded-lg text-blue-700 hover:bg-blue-50 transition-colors"
+                                      aria-label="Ficha técnica"
+                                      title="Ficha técnica"
+                                    >
+                                      <ExternalLink className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => startEdit(c)}
+                                      className="p-2 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors"
+                                      aria-label="Editar"
+                                      title="Editar"
+                                    >
+                                      <Pencil className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => handleDelete(c.id)}
+                                      className="p-2 rounded-lg text-red-600 hover:bg-red-50 transition-colors"
+                                      aria-label="Excluir"
+                                      title="Excluir"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   )}
                 </div>
               </div>
+            </section>
+          )}
+        </main>
 
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">
-                  Elevadores
-                </p>
+        {/* MODAL FICHA TÉCNICA */}
+        <Modal
+          isOpen={isModalOpen}
+          onClose={closeFicha}
+          title={selectedCondominio ? `Ficha Técnica - ${selectedCondominio.nome || 'Condomínio'}` : 'Ficha Técnica'}
+        >
+          {selectedCondominio ? (
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FieldCard
+                  icon={<Building2 className="w-5 h-5 text-blue-800" />}
+                  label="Nome"
+                  value={selectedCondominio.nome}
+                />
+                <FieldCard
+                  icon={<MapPin className="w-5 h-5 text-blue-800" />}
+                  label="Endereço"
+                  value={selectedCondominio.endereco}
+                />
+                <FieldCard
+                  icon={<CreditCard className="w-5 h-5 text-blue-800" />}
+                  label="CNPJ"
+                  value={selectedCondominio.cnpj}
+                />
+                <FieldCard
+                  icon={<CreditCard className="w-5 h-5 text-blue-800" />}
+                  label="Banco"
+                  value={selectedCondominio.banco}
+                />
+                <FieldCard
+                  icon={<CreditCard className="w-5 h-5 text-blue-800" />}
+                  label="Agência"
+                  value={selectedCondominio.agencia}
+                />
+                <FieldCard
+                  icon={<CreditCard className="w-5 h-5 text-blue-800" />}
+                  label="Conta"
+                  value={selectedCondominio.conta}
+                />
+                <FieldCard
+                  icon={<Users className="w-5 h-5 text-blue-800" />}
+                  label="Quantidade PNR"
+                  value={selectedCondominio.qtd_pnr}
+                />
+                <FieldCard
+                  icon={<Users className="w-5 h-5 text-blue-800" />}
+                  label="Quantidade Civis"
+                  value={selectedCondominio.qtd_civis}
+                />
+                <FieldCard
+                  icon={<ArrowUpCircle className="w-5 h-5 text-blue-800" />}
+                  label="Elevadores"
+                  value={selectedCondominio.elevadores}
+                />
+                <FieldCard
+                  icon={<Flame className="w-5 h-5 text-blue-800" />}
+                  label="Sistema de Incêndio"
+                  value={selectedCondominio.incendio}
+                />
+              </div>
+
+              <div className="bg-emerald-50 rounded-xl p-5 border border-emerald-100">
+                <h4 className="text-sm font-bold text-emerald-800 mb-3 flex items-center gap-2">
+                  <DollarSign className="w-4 h-4" />
+                  Cálculo da Taxa
+                </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                   <div>
-                    <span className="text-slate-500">Possui:</span>
-                    <p className="font-bold text-slate-800">
-                      {modalCondo.possui_elevadores ? 'Sim' : 'Não'}
+                    <p className="text-slate-500">Despesa estimada</p>
+                    <p className="font-semibold text-slate-800">
+                      {formatCurrency(safeNumber(selectedCondominio.despesa_estimada))}
                     </p>
                   </div>
                   <div>
-                    <span className="text-slate-500">Quantidade:</span>
-                    <p className="font-bold text-slate-800">
-                      {modalCondo.possui_elevadores
-                        ? formatNumber(modalCondo.qtd_elevadores)
-                        : '—'}
+                    <p className="text-slate-500">Total de unidades</p>
+                    <p className="font-semibold text-slate-800">
+                      {safeNumber(selectedCondominio.qtd_pnr) + safeNumber(selectedCondominio.qtd_civis)}
                     </p>
                   </div>
                   <div>
-                    <span className="text-slate-500">Empresa:</span>
-                    <p className="font-bold text-slate-800">
-                      {modalCondo.possui_elevadores
-                        ? modalCondo.empresa_elevadores || '—'
-                        : '—'}
+                    <p className="text-slate-500">Taxa unitária</p>
+                    <p className="font-bold text-emerald-700 text-lg">
+                      {formatCurrency(
+                        calcularTaxa(
+                          selectedCondominio.despesa_estimada,
+                          selectedCondominio.qtd_pnr,
+                          selectedCondominio.qtd_civis
+                        )
+                      )}
                     </p>
                   </div>
                 </div>
-              </div>
-
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-1">
-                  Status de Manutenção
-                </p>
-                <p className="text-sm text-slate-700 whitespace-pre-wrap">
-                  {modalCondo.status_manutencao || '—'}
+                <p className="mt-3 text-xs text-emerald-700">
+                  Fórmula: ({formatNumber(safeNumber(selectedCondominio.despesa_estimada))} /{' '}
+                  {safeNumber(selectedCondominio.qtd_pnr) + safeNumber(selectedCondominio.qtd_civis)}) / 0.905
                 </p>
               </div>
             </div>
+          ) : (
+            <p className="text-slate-500">Nenhum condomínio selecionado.</p>
+          )}
+        </Modal>
+      </div>
+    );
+  } catch (err) {
+    // Boundary simples: captura qualquer erro de renderização
+    console.error('Erro de runtime capturado:', err);
+    return <GlobalError error={err} onReset={() => window.location.reload()} />;
+  }
+}
 
-            <div className="sticky bottom-0 bg-white border-t border-slate-200 p-4 flex justify-end">
-              <button
-                onClick={() => setModalCondo(null)}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold px-5 py-2 rounded-lg transition"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {deleteId && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-900/70 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setDeleteId(null)
-          }}
-        >
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6">
-            <div className="flex items-center gap-3 mb-4 text-red-600">
-              <Trash2 className="w-6 h-6" />
-              <h3 className="text-lg font-black">Confirmar Exclusão</h3>
-            </div>
-            <p className="text-sm text-slate-600 mb-6">
-              Tem certeza que deseja excluir este condomínio? Esta ação não pode
-              ser desfeita.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setDeleteId(null)}
-                className="px-4 py-2 rounded-lg font-bold text-slate-600 hover:bg-slate-100 transition"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={confirmDelete}
-                className="px-4 py-2 rounded-lg font-bold bg-red-600 hover:bg-red-700 text-white transition"
-              >
-                Excluir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+function FieldCard({ icon, label, value }) {
+  return (
+    <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+      <div className="flex items-center gap-2 mb-1.5">
+        {icon}
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          {label}
+        </span>
+      </div>
+      <p className="text-slate-800 font-medium break-words">
+        {value !== undefined && value !== null && value !== '' ? value : '—'}
+      </p>
     </div>
-  )
+  );
 }

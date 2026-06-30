@@ -19,12 +19,12 @@ import {
   X,
 } from 'lucide-react';
 
-const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
+const SUPABASE_URL = 'https://bjeklbralayvulcuqiqe.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTAwMDAwMDAsImV4cCI6MTkwMDAwMDAwMH0.XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX';
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const initialForm = {
+const INITIAL_FORM = {
   nome: '',
   endereco: '',
   cnpj: '',
@@ -32,617 +32,697 @@ const initialForm = {
   qtd_civis: '',
   despesa_estimada: '',
   dados_bancarios: '',
-  saldo_reserva: '',
+  saldo_fundo_reserva: '',
   projetos_incendio_link: '',
   possui_elevadores: false,
+  qtd_elevadores: '',
+  elevadores_operacao: '',
+  elevadores_manutencao: '',
   empresa_elevadores: '',
   status_manutencao: '',
 };
 
-function App() {
-  const [condominios, setCondominios] = useState([]);
-  const [loading, setLoading] = useState(true);
+export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [selectedCondo, setSelectedCondo] = useState(null);
-  const [form, setForm] = useState(initialForm);
+  const [condominios, setCondominios] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(INITIAL_FORM);
   const [editingId, setEditingId] = useState(null);
-
-  const fetchCondominios = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from('condominios')
-      .select('*')
-      .order('nome');
-
-    if (error) {
-      console.error('Erro ao buscar condomínios:', error);
-    } else {
-      setCondominios(data || []);
-    }
-    setLoading(false);
-  };
+  const [selected, setSelected] = useState(null);
 
   useEffect(() => {
     fetchCondominios();
   }, []);
 
-  const handleChange = (e) => {
+  async function fetchCondominios() {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('condominios')
+        .select('*')
+        .order('nome', { ascending: true });
+
+      if (error) throw error;
+      setCondominios(data || []);
+    } catch (err) {
+      alert('Erro ao carregar condomínios: ' + (err.message || JSON.stringify(err)));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleChange(e) {
     const { name, value, type, checked } = e.target;
     setForm((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
-  };
+  }
 
-  const resetForm = () => {
-    setForm(initialForm);
-    setEditingId(null);
-  };
+  function numericValue(value) {
+    const parsed = Number(value);
+    return value === '' || value === null || value === undefined ? null : parsed;
+  }
 
-  const handleSubmit = async (e) => {
+  async function handleSubmit(e) {
     e.preventDefault();
+    setSaving(true);
 
     const payload = {
-      nome: form.nome,
-      endereco: form.endereco,
-      cnpj: form.cnpj,
-      qtd_pnr: Number(form.qtd_pnr) || 0,
-      qtd_civis: Number(form.qtd_civis) || 0,
-      despesa_estimada: Number(form.despesa_estimada) || 0,
-      dados_bancarios: form.dados_bancarios,
-      saldo_reserva: Number(form.saldo_reserva) || 0,
-      projetos_incendio_link: form.projetos_incendio_link,
-      possui_elevadores: form.possui_elevadores,
-      empresa_elevadores: form.empresa_elevadores,
-      status_manutencao: form.status_manutencao,
+      nome: form.nome.trim(),
+      endereco: form.endereco.trim(),
+      cnpj: form.cnpj.trim(),
+      qtd_pnr: numericValue(form.qtd_pnr),
+      qtd_civis: numericValue(form.qtd_civis),
+      despesa_estimada: numericValue(form.despesa_estimada),
+      dados_bancarios: form.dados_bancarios.trim(),
+      saldo_fundo_reserva: numericValue(form.saldo_fundo_reserva),
+      projetos_incendio_link: form.projetos_incendio_link.trim(),
+      possui_elevadores: !!form.possui_elevadores,
+      qtd_elevadores: form.possui_elevadores ? numericValue(form.qtd_elevadores) : null,
+      elevadores_operacao: form.possui_elevadores ? numericValue(form.elevadores_operacao) : null,
+      elevadores_manutencao: form.possui_elevadores ? numericValue(form.elevadores_manutencao) : null,
+      empresa_elevadores: form.possui_elevadores ? form.empresa_elevadores.trim() : '',
+      status_manutencao: form.possui_elevadores ? form.status_manutencao.trim() : '',
     };
 
-    if (editingId) {
-      const { error } = await supabase
-        .from('condominios')
-        .update(payload)
-        .eq('id', editingId);
-
-      if (!error) {
-        resetForm();
-        fetchCondominios();
+    try {
+      let result;
+      if (editingId) {
+        result = await supabase
+          .from('condominios')
+          .update(payload)
+          .eq('id', editingId)
+          .select();
       } else {
-        console.error('Erro ao atualizar:', error);
+        result = await supabase.from('condominios').insert(payload).select();
       }
-    } else {
-      const { error } = await supabase
-        .from('condominios')
-        .insert(payload);
 
-      if (!error) {
-        resetForm();
-        fetchCondominios();
-      } else {
-        console.error('Erro ao inserir:', error);
+      const { error, data } = result;
+
+      if (error) {
+        alert(
+          'Erro ao salvar condomínio:\n' +
+            'Código: ' + (error.code || 'N/A') + '\n' +
+            'Mensagem: ' + (error.message || JSON.stringify(error)) + '\n' +
+            'Detalhes: ' + (error.details || 'N/A')
+        );
+        return;
       }
+
+      await fetchCondominios();
+      clearForm();
+      setActiveTab('dashboard');
+    } catch (err) {
+      alert('Erro inesperado ao salvar: ' + (err.message || JSON.stringify(err)));
+    } finally {
+      setSaving(false);
     }
-  };
+  }
 
-  const handleEdit = (cond) => {
+  function clearForm() {
+    setForm(INITIAL_FORM);
+    setEditingId(null);
+  }
+
+  function editCondominio(item) {
     setForm({
-      nome: cond.nome || '',
-      endereco: cond.endereco || '',
-      cnpj: cond.cnpj || '',
-      qtd_pnr: cond.qtd_pnr ?? '',
-      qtd_civis: cond.qtd_civis ?? '',
-      despesa_estimada: cond.despesa_estimada ?? '',
-      dados_bancarios: cond.dados_bancarios || '',
-      saldo_reserva: cond.saldo_reserva ?? '',
-      projetos_incendio_link: cond.projetos_incendio_link || '',
-      possui_elevadores: cond.possui_elevadores || false,
-      empresa_elevadores: cond.empresa_elevadores || '',
-      status_manutencao: cond.status_manutencao || '',
+      nome: item.nome || '',
+      endereco: item.endereco || '',
+      cnpj: item.cnpj || '',
+      qtd_pnr: item.qtd_pnr ?? '',
+      qtd_civis: item.qtd_civis ?? '',
+      despesa_estimada: item.despesa_estimada ?? '',
+      dados_bancarios: item.dados_bancarios || '',
+      saldo_fundo_reserva: item.saldo_fundo_reserva ?? '',
+      projetos_incendio_link: item.projetos_incendio_link || '',
+      possui_elevadores: !!item.possui_elevadores,
+      qtd_elevadores: item.qtd_elevadores ?? '',
+      elevadores_operacao: item.elevadores_operacao ?? '',
+      elevadores_manutencao: item.elevadores_manutencao ?? '',
+      empresa_elevadores: item.empresa_elevadores || '',
+      status_manutencao: item.status_manutencao || '',
     });
-    setEditingId(cond.id);
-    setActiveTab('gerenciar');
-  };
+    setEditingId(item.id);
+    setActiveTab('cadastro');
+  }
 
-  const handleDelete = async (id) => {
+  async function deleteCondominio(id) {
     if (!window.confirm('Tem certeza que deseja excluir este condomínio?')) return;
-
-    const { error } = await supabase
-      .from('condominios')
-      .delete()
-      .eq('id', id);
-
-    if (!error) {
-      fetchCondominios();
-      if (selectedCondo && selectedCondo.id === id) setSelectedCondo(null);
-    } else {
-      console.error('Erro ao excluir:', error);
+    try {
+      const { error } = await supabase.from('condominios').delete().eq('id', id);
+      if (error) throw error;
+      await fetchCondominios();
+      if (selected && selected.id === id) setSelected(null);
+    } catch (err) {
+      alert('Erro ao excluir: ' + (err.message || JSON.stringify(err)));
     }
-  };
+  }
 
-  const calculateTaxa = (cond) => {
-    const divisor = Number(cond.qtd_pnr || 0) + Number(cond.qtd_civis || 0);
-    if (!divisor) return 0;
-    return (Number(cond.despesa_estimada || 0) / divisor) / 0.905;
-  };
-
-  const formatCurrency = (value) =>
-    Number(value || 0).toLocaleString('pt-BR', {
+  function formatCurrency(value) {
+    if (value === null || value === undefined || value === '') return '—';
+    return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
       currency: 'BRL',
-    });
+    }).format(Number(value));
+  }
 
-  const formInputClass =
-    'w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500';
+  function openFicha(item) {
+    setSelected(item);
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800">
-      <header className="bg-blue-900 text-white p-4 shadow-md flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2">
-          <Building2 className="w-7 h-7 text-green-400" />
-          <h1 className="text-xl font-bold tracking-tight">Condomínios</h1>
+      <header className="bg-slate-900 text-white shadow">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-emerald-500 p-2 rounded-lg">
+              <Building2 className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold">Gestão de Condomínios</h1>
+              <p className="text-xs text-slate-300">Controle administrativo e técnico</p>
+            </div>
+          </div>
+          <nav className="flex gap-2">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                activeTab === 'dashboard'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+              }`}
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              Dashboard
+            </button>
+            <button
+              onClick={() => {
+                clearForm();
+                setActiveTab('cadastro');
+              }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
+                activeTab === 'cadastro'
+                  ? 'bg-emerald-600 text-white'
+                  : 'bg-slate-800 text-slate-200 hover:bg-slate-700'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              Cadastro
+            </button>
+          </nav>
         </div>
-
-        <nav className="flex gap-2">
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
-              activeTab === 'dashboard'
-                ? 'bg-green-500 text-white shadow'
-                : 'bg-blue-800 hover:bg-blue-700'
-            }`}
-          >
-            <LayoutDashboard className="w-4 h-4" />
-            Dashboard
-          </button>
-          <button
-            onClick={() => setActiveTab('gerenciar')}
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
-              activeTab === 'gerenciar'
-                ? 'bg-green-500 text-white shadow'
-                : 'bg-blue-800 hover:bg-blue-700'
-            }`}
-          >
-            <Settings className="w-4 h-4" />
-            Gerenciar
-          </button>
-        </nav>
       </header>
 
-      <main className="p-4 max-w-7xl mx-auto">
-        {loading && (
-          <div className="mt-16 flex flex-col items-center justify-center gap-2 text-blue-900">
-            <Loader2 className="w-8 h-8 animate-spin" />
-            <span className="text-sm font-medium">Carregando condomínios...</span>
-          </div>
-        )}
-
-        {!loading && activeTab === 'dashboard' && (
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        {activeTab === 'dashboard' && (
           <section>
-            <h2 className="mb-6 flex items-center gap-2 text-2xl font-bold text-blue-900">
-              <LayoutDashboard className="w-6 h-6 text-green-600" />
-              Dashboard
-            </h2>
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+                <LayoutDashboard className="w-6 h-6 text-emerald-600" />
+                Dashboard
+              </h2>
+              <button
+                onClick={() => {
+                  clearForm();
+                  setActiveTab('cadastro');
+                }}
+                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition"
+              >
+                <PlusCircle className="w-4 h-4" />
+                Novo Condomínio
+              </button>
+            </div>
 
-            {condominios.length === 0 ? (
-              <p className="text-slate-500">Nenhum condomínio cadastrado.</p>
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-500">
+                <Loader2 className="w-10 h-10 animate-spin text-emerald-600 mb-3" />
+                <p>Carregando condomínios...</p>
+              </div>
+            ) : condominios.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-xl p-10 text-center text-slate-500">
+                <Building2 className="w-12 h-12 mx-auto mb-3 text-slate-300" />
+                <p className="text-lg font-medium">Nenhum condomínio cadastrado</p>
+                <p className="text-sm mt-1">Clique em "Novo Condomínio" para começar.</p>
+              </div>
             ) : (
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {condominios.map((cond) => (
-                  <button
-                    key={cond.id}
-                    onClick={() => setSelectedCondo(cond)}
-                    className="text-left rounded-xl border-l-4 border-green-500 bg-white p-5 shadow transition hover:-translate-y-1 hover:shadow-lg"
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                {condominios.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => openFicha(item)}
+                    className="bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-emerald-400 transition cursor-pointer p-5 relative group"
                   >
-                    <div className="mb-2 flex items-center gap-2">
-                      <Building2 className="w-5 h-5 text-blue-900" />
-                      <h3 className="text-lg font-bold text-blue-900">{cond.nome}</h3>
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="bg-slate-900 text-white p-2 rounded-lg">
+                        <Building2 className="w-5 h-5" />
+                      </div>
+                      <div className="flex gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            editCondominio(item);
+                          }}
+                          className="p-2 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
+                          title="Editar"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteCondominio(item.id);
+                          }}
+                          className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <div className="mb-2 flex items-start gap-2 text-sm text-slate-600">
-                      <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                      <span>{cond.endereco}</span>
+                    <h3 className="font-bold text-slate-900 text-lg mb-1 truncate">{item.nome}</h3>
+                    <p className="text-sm text-slate-500 flex items-center gap-1 mb-4">
+                      <MapPin className="w-3.5 h-3.5" />
+                      <span className="truncate">{item.endereco}</span>
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="bg-slate-50 rounded-lg p-3">
+                        <p className="text-xs text-slate-500 mb-1">Moradores</p>
+                        <p className="font-semibold text-slate-900 flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5 text-emerald-600" />
+                          {(item.qtd_pnr || 0) + (item.qtd_civis || 0)}
+                        </p>
+                      </div>
+                      <div className="bg-slate-50 rounded-lg p-3">
+                        <p className="text-xs text-slate-500 mb-1">Despesa Estimada</p>
+                        <p className="font-semibold text-slate-900 flex items-center gap-1">
+                          <DollarSign className="w-3.5 h-3.5 text-emerald-600" />
+                          {formatCurrency(item.despesa_estimada)}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                      <DollarSign className="h-4 w-4 text-green-600" />
-                      Taxa Unitária: {formatCurrency(calculateTaxa(cond))}
-                    </div>
-                  </button>
+                    {item.possui_elevadores && (
+                      <div className="mt-4 flex items-center gap-2 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
+                        <ArrowUpCircle className="w-3.5 h-3.5" />
+                        {item.elevadores_operacao || 0} em operação / {item.elevadores_manutencao || 0} em manutenção
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
           </section>
         )}
 
-        {!loading && activeTab === 'gerenciar' && (
+        {activeTab === 'cadastro' && (
           <section>
-            <h2 className="mb-6 flex items-center gap-2 text-2xl font-bold text-blue-900">
-              <Settings className="w-6 h-6 text-green-600" />
-              Gerenciar Condomínios
-            </h2>
+            <div className="mb-6 flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-slate-900">
+                {editingId ? 'Editar Condomínio' : 'Cadastrar Condomínio'}
+              </h2>
+              {editingId && (
+                <span className="bg-emerald-100 text-emerald-800 text-xs font-semibold px-2.5 py-1 rounded-full">
+                  Edição
+                </span>
+              )}
+            </div>
 
             <form
               onSubmit={handleSubmit}
-              className="mb-8 rounded-xl bg-white p-6 shadow"
+              className="bg-white rounded-xl border border-slate-200 shadow-sm p-6"
             >
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Nome
-                  </label>
-                  <input
-                    type="text"
-                    name="nome"
-                    value={form.nome}
-                    onChange={handleChange}
-                    required
-                    className={formInputClass}
-                    placeholder="Nome do condomínio"
-                  />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Nome do Condomínio</label>
+                  <div className="relative">
+                    <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      name="nome"
+                      required
+                      value={form.nome}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      placeholder="Ex: Residencial Parque Verde"
+                    />
+                  </div>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Endereço</label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      name="endereco"
+                      required
+                      value={form.endereco}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      placeholder="Rua, número, bairro, cidade"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Endereço
-                  </label>
-                  <input
-                    type="text"
-                    name="endereco"
-                    value={form.endereco}
-                    onChange={handleChange}
-                    required
-                    className={formInputClass}
-                    placeholder="Endereço completo"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    CNPJ
-                  </label>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">CNPJ</label>
                   <input
                     type="text"
                     name="cnpj"
                     value={form.cnpj}
                     onChange={handleChange}
-                    className={formInputClass}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                     placeholder="00.000.000/0000-00"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Qtd PNR
-                  </label>
-                  <input
-                    type="number"
-                    name="qtd_pnr"
-                    value={form.qtd_pnr}
-                    onChange={handleChange}
-                    min="0"
-                    className={formInputClass}
-                    placeholder="0"
-                  />
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Dados Bancários</label>
+                  <div className="relative">
+                    <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      name="dados_bancarios"
+                      value={form.dados_bancarios}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      placeholder="Banco, agência, conta"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Qtd Civis
-                  </label>
-                  <input
-                    type="number"
-                    name="qtd_civis"
-                    value={form.qtd_civis}
-                    onChange={handleChange}
-                    min="0"
-                    className={formInputClass}
-                    placeholder="0"
-                  />
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Qtd. PNR</label>
+                  <div className="relative">
+                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="number"
+                      name="qtd_pnr"
+                      min="0"
+                      value={form.qtd_pnr}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Despesa Estimada
-                  </label>
-                  <input
-                    type="number"
-                    name="despesa_estimada"
-                    value={form.despesa_estimada}
-                    onChange={handleChange}
-                    min="0"
-                    step="0.01"
-                    className={formInputClass}
-                    placeholder="R$ 0,00"
-                  />
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Qtd. Civis</label>
+                  <div className="relative">
+                    <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="number"
+                      name="qtd_civis"
+                      min="0"
+                      value={form.qtd_civis}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Dados Bancários
-                  </label>
-                  <input
-                    type="text"
-                    name="dados_bancarios"
-                    value={form.dados_bancarios}
-                    onChange={handleChange}
-                    className={formInputClass}
-                    placeholder="Banco, agência, conta..."
-                  />
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Despesa Estimada</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="number"
+                      name="despesa_estimada"
+                      min="0"
+                      step="0.01"
+                      value={form.despesa_estimada}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Saldo Reserva
-                  </label>
-                  <input
-                    type="number"
-                    name="saldo_reserva"
-                    value={form.saldo_reserva}
-                    onChange={handleChange}
-                    min="0"
-                    step="0.01"
-                    className={formInputClass}
-                    placeholder="R$ 0,00"
-                  />
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Saldo Fundo Reserva</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="number"
+                      name="saldo_fundo_reserva"
+                      min="0"
+                      step="0.01"
+                      value={form.saldo_fundo_reserva}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Projetos Incêndio (Link)
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    Link Projeto de Incêndio
                   </label>
-                  <input
-                    type="url"
-                    name="projetos_incendio_link"
-                    value={form.projetos_incendio_link}
-                    onChange={handleChange}
-                    className={formInputClass}
-                    placeholder="https://..."
-                  />
+                  <div className="relative">
+                    <Flame className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="url"
+                      name="projetos_incendio_link"
+                      value={form.projetos_incendio_link}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      placeholder="https://..."
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Empresa Elevadores
-                  </label>
-                  <input
-                    type="text"
-                    name="empresa_elevadores"
-                    value={form.empresa_elevadores}
-                    onChange={handleChange}
-                    className={formInputClass}
-                    placeholder="Nome da empresa"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">
-                    Status Manutenção
-                  </label>
-                  <input
-                    type="text"
-                    name="status_manutencao"
-                    value={form.status_manutencao}
-                    onChange={handleChange}
-                    className={formInputClass}
-                    placeholder="Em dia, pendente, etc."
-                  />
-                </div>
-
-                <div className="flex items-end">
-                  <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                <div className="md:col-span-2">
+                  <label className="flex items-center gap-3 p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition cursor-pointer">
                     <input
                       type="checkbox"
                       name="possui_elevadores"
                       checked={form.possui_elevadores}
                       onChange={handleChange}
-                      className="h-4 w-4 accent-green-600"
+                      className="w-5 h-5 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500"
                     />
-                    Possui Elevadores
+                    <div>
+                      <p className="font-medium text-slate-900">Possui elevadores</p>
+                      <p className="text-sm text-slate-500">Marque para exibir os campos técnicos de elevadores</p>
+                    </div>
                   </label>
                 </div>
-              </div>
 
-              <div className="mt-6 flex flex-wrap gap-3">
-                <button
-                  type="submit"
-                  className="flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white shadow transition hover:bg-green-500"
-                >
-                  {editingId ? (
-                    <>
-                      <Pencil className="w-4 h-4" /> Atualizar Condomínio
-                    </>
-                  ) : (
-                    <>
-                      <PlusCircle className="w-4 h-4" /> Salvar Condomínio
-                    </>
-                  )}
-                </button>
-                {editingId && (
-                  <button
-                    type="button"
-                    onClick={resetForm}
-                    className="flex items-center gap-2 rounded-lg bg-slate-200 px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-300"
-                  >
-                    <XCircle className="w-4 h-4" /> Cancelar
-                  </button>
+                {form.possui_elevadores && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Qtd. Total de Elevadores</label>
+                      <div className="relative">
+                        <ArrowUpCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                          type="number"
+                          name="qtd_elevadores"
+                          min="0"
+                          value={form.qtd_elevadores}
+                          onChange={handleChange}
+                          className="w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Em Operação</label>
+                      <input
+                        type="number"
+                        name="elevadores_operacao"
+                        min="0"
+                        value={form.elevadores_operacao}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Em Manutenção</label>
+                      <input
+                        type="number"
+                        name="elevadores_manutencao"
+                        min="0"
+                        value={form.elevadores_manutencao}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Empresa Responsável</label>
+                      <input
+                        type="text"
+                        name="empresa_elevadores"
+                        value={form.empresa_elevadores}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Status da Manutenção</label>
+                      <input
+                        type="text"
+                        name="status_manutencao"
+                        value={form.status_manutencao}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        placeholder="Ex: Em dia, Pendente, Atrasado"
+                      />
+                    </div>
+                  </>
                 )}
               </div>
-            </form>
 
-            {condominios.length === 0 ? (
-              <p className="text-slate-500">Nenhum condomínio para listar.</p>
-            ) : (
-              <ul className="space-y-3">
-                {condominios.map((cond) => (
-                  <li
-                    key={cond.id}
-                    className="flex flex-col justify-between gap-3 rounded-lg bg-white p-4 shadow md:flex-row md:items-center"
-                  >
-                    <div>
-                      <h3 className="font-bold text-blue-900">{cond.nome}</h3>
-                      <p className="text-sm text-slate-600">{cond.endereco}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleEdit(cond)}
-                        className="flex items-center gap-2 rounded-lg bg-blue-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-blue-800"
-                      >
-                        <Pencil className="w-4 h-4" /> Editar
-                      </button>
-                      <button
-                        onClick={() => handleDelete(cond.id)}
-                        className="flex items-center gap-2 rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-red-500"
-                      >
-                        <Trash2 className="w-4 h-4" /> Excluir
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+              <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearForm();
+                    setActiveTab('dashboard');
+                  }}
+                  className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition font-medium"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <PlusCircle className="w-4 h-4" />}
+                  {editingId ? 'Atualizar' : 'Salvar'}
+                </button>
+              </div>
+            </form>
           </section>
         )}
       </main>
 
-      {selectedCondo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="mb-5 flex items-center justify-between border-b border-slate-200 pb-3">
-              <h2 className="flex items-center gap-2 text-xl font-bold text-blue-900">
-                <Building2 className="w-6 h-6 text-green-600" />
-                Ficha Técnica
-              </h2>
+      {selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="sticky top-0 bg-slate-900 text-white px-6 py-4 flex items-center justify-between rounded-t-xl">
+              <div className="flex items-center gap-3">
+                <Building2 className="w-6 h-6 text-emerald-400" />
+                <h3 className="text-lg font-bold">Ficha Técnica</h3>
+              </div>
               <button
-                onClick={() => setSelectedCondo(null)}
-                className="text-slate-500 transition hover:text-red-600"
+                onClick={() => setSelected(null)}
+                className="p-2 hover:bg-white/10 rounded-lg transition"
               >
-                <X className="w-6 h-6" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
-              <div className="flex items-start gap-2">
-                <Building2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">Nome:</span>
-                  <p className="text-slate-900">{selectedCondo.nome}</p>
+            <div className="p-6 space-y-6">
+              <div>
+                <h4 className="text-xl font-bold text-slate-900 mb-1">{selected.nome}</h4>
+                <p className="text-sm text-slate-500 flex items-center gap-1">
+                  <MapPin className="w-4 h-4" />
+                  {selected.endereco}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-slate-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">CNPJ</p>
+                  <p className="font-medium text-slate-900">{selected.cnpj || '—'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Dados Bancários</p>
+                  <p className="font-medium text-slate-900">{selected.dados_bancarios || '—'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Moradores PNR</p>
+                  <p className="font-medium text-slate-900">{selected.qtd_pnr ?? '—'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Moradores Civis</p>
+                  <p className="font-medium text-slate-900">{selected.qtd_civis ?? '—'}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Despesa Estimada</p>
+                  <p className="font-medium text-slate-900">{formatCurrency(selected.despesa_estimada)}</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-500 uppercase tracking-wide">Saldo Fundo Reserva</p>
+                  <p className="font-medium text-slate-900">{formatCurrency(selected.saldo_fundo_reserva)}</p>
                 </div>
               </div>
 
-              <div className="flex items-start gap-2">
-                <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">Endereço:</span>
-                  <p className="text-slate-900">{selectedCondo.endereco}</p>
-                </div>
+              <div className="bg-slate-50 rounded-lg p-4">
+                <p className="text-xs text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-2">
+                  <Flame className="w-4 h-4 text-orange-500" />
+                  Projeto de Incêndio
+                </p>
+                {selected.projetos_incendio_link ? (
+                  <a
+                    href={selected.projetos_incendio_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-2 text-emerald-700 hover:text-emerald-800 font-medium break-all"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    {selected.projetos_incendio_link}
+                  </a>
+                ) : (
+                  <p className="text-slate-400">Nenhum link cadastrado</p>
+                )}
               </div>
 
-              <div className="flex items-start gap-2">
-                <CreditCard className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">CNPJ:</span>
-                  <p className="text-slate-900">{selectedCondo.cnpj}</p>
-                </div>
+              <div className="border-t border-slate-200 pt-4">
+                <h5 className="font-bold text-slate-900 mb-3 flex items-center gap-2">
+                  <ArrowUpCircle className="w-5 h-5 text-emerald-600" />
+                  Elevadores
+                </h5>
+                {selected.possui_elevadores ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-100">
+                      <p className="text-xs text-emerald-700 uppercase tracking-wide">Qtd. Total</p>
+                      <p className="font-bold text-emerald-900 text-lg">{selected.qtd_elevadores ?? '—'}</p>
+                    </div>
+                    <div className="bg-emerald-50 rounded-lg p-4 border border-emerald-100">
+                      <p className="text-xs text-emerald-700 uppercase tracking-wide">Empresa Responsável</p>
+                      <p className="font-bold text-emerald-900">{selected.empresa_elevadores || '—'}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 border border-slate-200">
+                      <p className="text-xs text-slate-500 uppercase tracking-wide">Em Operação</p>
+                      <p className="font-bold text-slate-900 text-lg">{selected.elevadores_operacao ?? '—'}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-4 border border-slate-200">
+                      <p className="text-xs text-slate-500 uppercase tracking-wide">Em Manutenção</p>
+                      <p className="font-bold text-slate-900 text-lg">{selected.elevadores_manutencao ?? '—'}</p>
+                    </div>
+                    <div className="sm:col-span-2 bg-white rounded-lg p-4 border border-slate-200">
+                      <p className="text-xs text-slate-500 uppercase tracking-wide">Status da Manutenção</p>
+                      <p className="font-bold text-slate-900">{selected.status_manutencao || '—'}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">Não possui elevadores cadastrados.</p>
+                )}
               </div>
 
-              <div className="flex items-start gap-2">
-                <Users className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">Qtd PNR:</span>
-                  <p className="text-slate-900">{selectedCondo.qtd_pnr}</p>
-                </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  onClick={() => setSelected(null)}
+                  className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-100 transition font-medium"
+                >
+                  Fechar
+                </button>
+                <button
+                  onClick={() => {
+                    editCondominio(selected);
+                    setSelected(null);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition font-medium"
+                >
+                  <Pencil className="w-4 h-4" />
+                  Editar
+                </button>
               </div>
-
-              <div className="flex items-start gap-2">
-                <Users className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">Qtd Civis:</span>
-                  <p className="text-slate-900">{selectedCondo.qtd_civis}</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2">
-                <DollarSign className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">Despesa Estimada:</span>
-                  <p className="text-slate-900">{formatCurrency(selectedCondo.despesa_estimada)}</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2">
-                <DollarSign className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">Taxa Unitária:</span>
-                  <p className="text-slate-900">{formatCurrency(calculateTaxa(selectedCondo))}</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2">
-                <CreditCard className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">Dados Bancários:</span>
-                  <p className="text-slate-900">{selectedCondo.dados_bancarios}</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2">
-                <DollarSign className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">Saldo Reserva:</span>
-                  <p className="text-slate-900">{formatCurrency(selectedCondo.saldo_reserva)}</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2">
-                <Flame className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">Projetos Incêndio:</span>
-                  <p className="break-all text-slate-900">
-                    {selectedCondo.projetos_incendio_link ? (
-                      <a
-                        href={selectedCondo.projetos_incendio_link}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center gap-1 text-blue-600 hover:underline"
-                      >
-                        Acessar link <ExternalLink className="h-3 w-3" />
-                      </a>
-                    ) : (
-                      '-'
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2">
-                <ArrowUpCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">Possui Elevadores:</span>
-                  <p className="text-slate-900">{selectedCondo.possui_elevadores ? 'Sim' : 'Não'}</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2">
-                <Building2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">Empresa Elevadores:</span>
-                  <p className="text-slate-900">{selectedCondo.empresa_elevadores}</p>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2">
-                <Settings className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-600" />
-                <div>
-                  <span className="font-semibold text-slate-700">Status Manutenção:</span>
-                  <p className="text-slate-900">{selectedCondo.status_manutencao}</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <button
-                onClick={() => setSelectedCondo(null)}
-                className="flex items-center gap-2 rounded-lg bg-blue-900 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-800"
-              >
-                <XCircle className="w-4 h-4" /> Fechar
-              </button>
             </div>
           </div>
         </div>
@@ -650,5 +730,3 @@ function App() {
     </div>
   );
 }
-
-export default App;

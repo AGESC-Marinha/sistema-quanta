@@ -1,161 +1,737 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { 
-  Building2, MapPin, Users, DollarSign, Trash2, 
-  LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle 
+import {
+  Building2,
+  MapPin,
+  Users,
+  DollarSign,
+  Trash2,
+  LayoutDashboard,
+  Settings,
+  Loader2,
+  PlusCircle,
+  Pencil,
+  XCircle,
+  CreditCard,
+  Flame,
+  ArrowUpCircle,
 } from 'lucide-react';
 
-const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const SUPABASE_URL = 'https://bjeklbralayvulcuqiqe.supabase.co';
+const SUPABASE_ANON_KEY =
+  process.env.REACT_APP_SUPABASE_ANON_KEY || 'SUA_CHAVE_ANON_AQUI';
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const initialForm = {
+  nome: '',
+  endereco: '',
+  cidade: '',
+  estado: '',
+  cep: '',
+  cnpj: '',
+  quantidade_unidades: '',
+  nome_sindico: '',
+  telefone_sindico: '',
+  email_sindico: '',
+  valor_total: '',
+  dados_bancarios: '',
+  saldo_fundo_reserva: '',
+  projetos_incendio: '',
+  possui_elevadores: false,
+  qtd_elevadores: '',
+  empresa_elevadores: '',
+  status_manutencao: 'Em dia',
+};
+
+const statusOptions = [
+  'Em dia',
+  'Pendente',
+  'Atrasado',
+  'Em andamento',
+  'Sem contrato',
+  'Outro',
+];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [condominios, setCondominios] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+  const [form, setForm] = useState(initialForm);
   const [editingId, setEditingId] = useState(null);
-  const [form, setForm] = useState({ nome: '', endereco: '', qtd_pnr: '', qtd_civis: '', despesa_estimada: '' });
 
-  useEffect(() => { fetchCondominios(); }, []);
+  useEffect(() => {
+    fetchCondominios();
+  }, []);
 
-  async function fetchCondominios() {
+  const fetchCondominios = async () => {
+    setLoading(true);
+    setError(null);
+
     try {
-      setLoading(true);
-      const { data, error } = await supabase.from('condominios').select('*').order('nome');
-      if (error) throw error;
+      const { data, error: supaError } = await supabase
+        .from('condominios')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (supaError) throw supaError;
       setCondominios(data || []);
     } catch (err) {
-      console.error(err);
+      setError(err.message || 'Erro ao carregar condomínios.');
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  async function handleSubmit(e) {
+  const handleInputChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setForm((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
+    }));
+  };
+
+  const handleNumberChange = (e) => {
+    const { name, value } = e.target;
+    const numeric = value.replace(/[^\d.]/g, '');
+    setForm((prev) => ({ ...prev, [name]: numeric }));
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setSaving(true);
+    setError(null);
+
     const payload = {
-      nome: form.nome,
-      endereco: form.endereco,
-      qtd_pnr: Number(form.qtd_pnr),
-      qtd_civis: Number(form.qtd_civis),
-      despesa_estimada: Number(form.despesa_estimada)
+      ...form,
+      quantidade_unidades: Number(form.quantidade_unidades) || 0,
+      valor_total: Number(form.valor_total) || 0,
+      saldo_fundo_reserva: Number(form.saldo_fundo_reserva) || 0,
+      qtd_elevadores: form.possui_elevadores
+        ? Number(form.qtd_elevadores) || 0
+        : 0,
+      empresa_elevadores: form.possui_elevadores
+        ? form.empresa_elevadores
+        : '',
+      status_manutencao: form.possui_elevadores
+        ? form.status_manutencao
+        : 'Não aplicável',
     };
 
     try {
       if (editingId) {
-        const { error } = await supabase.from('condominios').update(payload).eq('id', editingId);
-        if (error) throw error;
-        setEditingId(null);
-        alert('Atualizado com sucesso!');
+        const { error: supaError } = await supabase
+          .from('condominios')
+          .update(payload)
+          .eq('id', editingId);
+        if (supaError) throw supaError;
       } else {
-        const { error } = await supabase.from('condominios').insert([payload]);
-        if (error) throw error;
-        alert('Cadastrado com sucesso!');
+        const { error: supaError } = await supabase
+          .from('condominios')
+          .insert(payload);
+        if (supaError) throw supaError;
       }
-      setForm({ nome: '', endereco: '', qtd_pnr: '', qtd_civis: '', despesa_estimada: '' });
+
+      resetForm();
+      setActiveTab('dashboard');
       await fetchCondominios();
     } catch (err) {
-      alert('Erro: ' + err.message);
+      setError(err.message || 'Erro ao salvar condomínio.');
+    } finally {
+      setSaving(false);
     }
-  }
+  };
 
-  function handleEdit(c) {
-    setEditingId(c.id);
-    setForm({ nome: c.nome, endereco: c.endereco || '', qtd_pnr: c.qtd_pnr, qtd_civis: c.qtd_civis, despesa_estimada: c.despesa_estimada });
+  const handleEdit = (item) => {
+    setForm({
+      ...initialForm,
+      ...item,
+      possui_elevadores: Boolean(item.possui_elevadores),
+    });
+    setEditingId(item.id);
     setActiveTab('gerenciar');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
+  };
 
-  const calcularTaxa = (c) => {
-    const total = (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
-    if (total === 0) return 0;
-    return (Number(c.despesa_estimada) / total) / 0.905;
+  const handleDelete = async (id) => {
+    if (!window.confirm('Tem certeza que deseja excluir este condomínio?')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const { error: supaError } = await supabase
+        .from('condominios')
+        .delete()
+        .eq('id', id);
+      if (supaError) throw supaError;
+      await fetchCondominios();
+    } catch (err) {
+      setError(err.message || 'Erro ao excluir condomínio.');
+      setLoading(false);
+    }
+  };
+
+  const resetForm = () => {
+    setForm(initialForm);
+    setEditingId(null);
+  };
+
+  const calcularTaxaUnitaria = (valorTotal, unidades) => {
+    if (!valorTotal || !unidades || unidades <= 0) return 0;
+    return valorTotal / 0.905 / unidades;
+  };
+
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value || 0);
+  };
+
+  const formatCNPJ = (cnpj) => {
+    if (!cnpj) return '-';
+    const digits = String(cnpj).replace(/\D/g, '');
+    if (digits.length !== 14) return cnpj;
+    return digits.replace(
+      /^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/,
+      '$1.$2.$3/$4-$5'
+    );
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      <header className="bg-blue-900 text-white p-6 shadow-xl flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Building2 size={32} />
-          <h1 className="text-2xl font-black">SISTEMA QUANTA</h1>
+    <div className="min-h-screen bg-gray-50 text-gray-800">
+      <header className="bg-white shadow-sm sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-3">
+              <div className="bg-blue-600 p-2 rounded-lg">
+                <Building2 className="w-6 h-6 text-white" />
+              </div>
+              <h1 className="text-xl font-bold text-gray-900">
+                Gestão de Condomínios
+              </h1>
+            </div>
+
+            <nav className="flex items-center gap-2">
+              <button
+                onClick={() => setActiveTab('dashboard')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'dashboard'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                Dashboard
+              </button>
+              <button
+                onClick={() => {
+                  resetForm();
+                  setActiveTab('gerenciar');
+                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === 'gerenciar'
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                <Settings className="w-4 h-4" />
+                Gerenciar
+              </button>
+            </nav>
+          </div>
         </div>
-        <nav className="flex gap-2">
-          <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Dashboard</button>
-          <button onClick={() => setActiveTab('gerenciar')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'gerenciar' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-white/10'}`}>Gerenciar</button>
-        </nav>
       </header>
 
-      <main className="max-w-7xl mx-auto p-8">
-        {loading ? <div className="text-center py-20"><Loader2 className="animate-spin mx-auto" size={48} /></div> : (
-          activeTab === 'dashboard' ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {condominios.map(c => (
-                <div key={c.id} className="bg-white rounded-3xl shadow-sm border p-6 hover:shadow-xl transition-all">
-                  <h3 className="font-black text-xl text-blue-900">{c.nome}</h3>
-                  <p className="text-slate-500 text-sm flex items-center gap-1 mt-1"><MapPin size={14}/> {c.endereco || 'Brasília, DF'}</p>
-                  <div className="mt-6 p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
-                    <p className="text-[10px] font-black text-emerald-600 uppercase">Taxa Unitária (0,905)</p>
-                    <p className="text-3xl font-black text-emerald-700">R$ {calcularTaxa(c).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 flex items-center gap-3">
+            <XCircle className="w-5 h-5 flex-shrink-0" />
+            <p>{error}</p>
+          </div>
+        )}
+
+        {activeTab === 'dashboard' && (
+          <section>
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Dashboard
+                </h2>
+                <p className="text-sm text-gray-500">
+                  Visão geral dos condomínios cadastrados
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  resetForm();
+                  setActiveTab('gerenciar');
+                }}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                <PlusCircle className="w-4 h-4" />
+                Novo Condomínio
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="flex items-center justify-center h-64 text-gray-500">
+                <Loader2 className="w-8 h-8 animate-spin mr-3" />
+                Carregando...
+              </div>
+            ) : condominios.length === 0 ? (
+              <div className="bg-white rounded-xl shadow-sm p-12 text-center">
+                <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900">
+                  Nenhum condomínio cadastrado
+                </h3>
+                <p className="text-gray-500 mt-1">
+                  Clique em "Novo Condomínio" para começar.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {condominios.map((item) => {
+                  const taxaUnitaria = calcularTaxaUnitaria(
+                    item.valor_total,
+                    item.quantidade_unidades
+                  );
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-blue-100 p-2.5 rounded-lg">
+                            <Building2 className="w-6 h-6 text-blue-600" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-gray-900 line-clamp-1">
+                              {item.nome || 'Sem nome'}
+                            </h3>
+                            <p className="text-xs text-gray-500">
+                              CNPJ: {formatCNPJ(item.cnpj)}
+                            </p>
+                          </div>
+                        </div>
+                        {item.possui_elevadores && (
+                          <div
+                            className="bg-orange-50 p-2 rounded-lg"
+                            title="Possui elevadores"
+                          >
+                            <ArrowUpCircle className="w-5 h-5 text-orange-500" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mb-4">
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <div className="flex items-center gap-2 text-gray-500 mb-1">
+                            <MapPin className="w-4 h-4" />
+                            <span className="text-xs font-medium">Cidade</span>
+                          </div>
+                          <p className="text-sm font-semibold text-gray-900">
+                            {item.cidade || '-'}
+                            {item.estado ? `/${item.estado}` : ''}
+                          </p>
+                        </div>
+
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <div className="flex items-center gap-2 text-gray-500 mb-1">
+                            <Users className="w-4 h-4" />
+                            <span className="text-xs font-medium">
+                              Unidades
+                            </span>
+                          </div>
+                          <p className="text-sm font-semibold text-gray-900">
+                            {item.quantidade_unidades || 0}
+                          </p>
+                        </div>
+
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <div className="flex items-center gap-2 text-gray-500 mb-1">
+                            <DollarSign className="w-4 h-4" />
+                            <span className="text-xs font-medium">
+                              Valor Total
+                            </span>
+                          </div>
+                          <p className="text-sm font-semibold text-gray-900">
+                            {formatCurrency(item.valor_total)}
+                          </p>
+                        </div>
+
+                        <div className="bg-gray-50 rounded-lg p-3">
+                          <div className="flex items-center gap-2 text-gray-500 mb-1">
+                            <DollarSign className="w-4 h-4" />
+                            <span className="text-xs font-medium">
+                              Taxa Unitária
+                            </span>
+                          </div>
+                          <p className="text-sm font-semibold text-gray-900">
+                            {formatCurrency(taxaUnitaria)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-4 border-t border-gray-100">
+                        <button
+                          onClick={() => handleEdit(item)}
+                          className="flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-800 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+                        >
+                          <Pencil className="w-4 h-4" />
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="flex items-center gap-1.5 text-sm font-medium text-red-600 hover:text-red-800 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Excluir
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {activeTab === 'gerenciar' && (
+          <section>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">
+                {editingId ? 'Editar Condomínio' : 'Cadastrar Condomínio'}
+              </h2>
+              <p className="text-sm text-gray-500">
+                Preencha os dados abaixo para{' '}
+                {editingId ? 'atualizar' : 'cadastrar'} o condomínio.
+              </p>
+            </div>
+
+            <form
+              onSubmit={handleSubmit}
+              className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 sm:p-8"
+            >
+              <div className="space-y-8">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-blue-600" />
+                    Informações Básicas
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="lg:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Nome do Condomínio
+                      </label>
+                      <input
+                        type="text"
+                        name="nome"
+                        value={form.nome}
+                        onChange={handleInputChange}
+                        required
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        CNPJ
+                      </label>
+                      <input
+                        type="text"
+                        name="cnpj"
+                        value={form.cnpj}
+                        onChange={handleInputChange}
+                        placeholder="00.000.000/0000-00"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                    <div className="lg:col-span-2">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Endereço
+                      </label>
+                      <input
+                        type="text"
+                        name="endereco"
+                        value={form.endereco}
+                        onChange={handleInputChange}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Cidade
+                      </label>
+                      <input
+                        type="text"
+                        name="cidade"
+                        value={form.cidade}
+                        onChange={handleInputChange}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Estado
+                      </label>
+                      <input
+                        type="text"
+                        name="estado"
+                        value={form.estado}
+                        onChange={handleInputChange}
+                        maxLength={2}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        CEP
+                      </label>
+                      <input
+                        type="text"
+                        name="cep"
+                        value={form.cep}
+                        onChange={handleInputChange}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
                   </div>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <div className="max-w-4xl mx-auto space-y-10">
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-                <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-900">
-                  {editingId ? <Pencil size={24}/> : <PlusCircle size={24}/>} 
-                  {editingId ? 'EDITAR CONDOMÍNIO' : 'NOVO CADASTRO'}
-                </h2>
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="md:col-span-2">
-                    <label className="text-xs font-black text-slate-400 uppercase ml-1">Nome do Condomínio</label>
-                    <input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} required />
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Users className="w-5 h-5 text-blue-600" />
+                    Síndico
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Nome do Síndico
+                      </label>
+                      <input
+                        type="text"
+                        name="nome_sindico"
+                        value={form.nome_sindico}
+                        onChange={handleInputChange}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Telefone do Síndico
+                      </label>
+                      <input
+                        type="text"
+                        name="telefone_sindico"
+                        value={form.telefone_sindico}
+                        onChange={handleInputChange}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        E-mail do Síndico
+                      </label>
+                      <input
+                        type="email"
+                        name="email_sindico"
+                        value={form.email_sindico}
+                        onChange={handleInputChange}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
                   </div>
-                  <div className="md:col-span-2">
-                    <label className="text-xs font-black text-slate-400 uppercase ml-1">Endereço Completo</label>
-                    <input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.endereco} onChange={e => setForm({...form, endereco: e.target.value})} />
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <DollarSign className="w-5 h-5 text-blue-600" />
+                    Financeiro
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Quantidade de Unidades
+                      </label>
+                      <input
+                        type="text"
+                        name="quantidade_unidades"
+                        value={form.quantidade_unidades}
+                        onChange={handleNumberChange}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Valor Total (R$)
+                      </label>
+                      <input
+                        type="text"
+                        name="valor_total"
+                        value={form.valor_total}
+                        onChange={handleNumberChange}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Saldo Fundo Reserva (R$)
+                      </label>
+                      <input
+                        type="text"
+                        name="saldo_fundo_reserva"
+                        value={form.saldo_fundo_reserva}
+                        onChange={handleNumberChange}
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
+                    <div className="sm:col-span-2 lg:col-span-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Dados Bancários
+                      </label>
+                      <input
+                        type="text"
+                        name="dados_bancarios"
+                        value={form.dados_bancarios}
+                        onChange={handleInputChange}
+                        placeholder="Banco, Agência, Conta, Chave Pix"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd PNR</label>
-                    <input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.qtd_pnr} onChange={e => setForm({...form, qtd_pnr: e.target.value})} required />
-                  </div>
-                  <div>
-                    <label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd Civis</label>
-                    <input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500" value={form.qtd_civis} onChange={e => setForm({...form, qtd_civis: e.target.value})} required />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="text-xs font-black text-slate-400 uppercase ml-1">Despesa Estimada (Valor Base)</label>
-                    <input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 focus:ring-2 focus:ring-blue-500 text-2xl font-black text-blue-900" value={form.despesa_estimada} onChange={e => setForm({...form, despesa_estimada: e.target.value})} required />
-                  </div>
-                  <div className="md:col-span-2 flex gap-4">
-                    <button className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 shadow-xl shadow-blue-100 transition-all active:scale-95">
-                      {editingId ? 'SALVAR ALTERAÇÕES' : 'SALVAR CONDOMÍNIO'}
-                    </button>
-                    {editingId && (
-                      <button type="button" onClick={() => {setEditingId(null); setForm({nome:'',endereco:'',qtd_pnr:'',qtd_civis:'',despesa_estimada:''})}} className="bg-slate-200 text-slate-600 px-8 rounded-2xl font-black hover:bg-slate-300 transition-all">CANCELAR</button>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <ArrowUpCircle className="w-5 h-5 text-blue-600" />
+                    Elevadores
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="flex items-center gap-3 sm:col-span-2 lg:col-span-4">
+                      <input
+                        type="checkbox"
+                        id="possui_elevadores"
+                        name="possui_elevadores"
+                        checked={form.possui_elevadores}
+                        onChange={handleInputChange}
+                        className="w-5 h-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label
+                        htmlFor="possui_elevadores"
+                        className="text-sm font-medium text-gray-700"
+                      >
+                        Possui Elevadores
+                      </label>
+                    </div>
+
+                    {form.possui_elevadores && (
+                      <>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Quantidade de Elevadores
+                          </label>
+                          <input
+                            type="text"
+                            name="qtd_elevadores"
+                            value={form.qtd_elevadores}
+                            onChange={handleNumberChange}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Empresa de Elevadores
+                          </label>
+                          <input
+                            type="text"
+                            name="empresa_elevadores"
+                            value={form.empresa_elevadores}
+                            onChange={handleInputChange}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Status de Manutenção
+                          </label>
+                          <select
+                            name="status_manutencao"
+                            value={form.status_manutencao}
+                            onChange={handleInputChange}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors bg-white"
+                          >
+                            {statusOptions.map((status) => (
+                              <option key={status} value={status}>
+                                {status}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
                     )}
                   </div>
-                </form>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                    <Flame className="w-5 h-5 text-blue-600" />
+                    Projetos de Incêndio
+                  </h3>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Detalhes dos Projetos de Incêndio
+                    </label>
+                    <textarea
+                      name="projetos_incendio"
+                      value={form.projetos_incendio}
+                      onChange={handleInputChange}
+                      rows={4}
+                      placeholder="Descreva os projetos de prevenção e combate a incêndio do condomínio"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-colors"
+                    />
+                  </div>
+                </div>
               </div>
-              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-6 bg-slate-50 border-b border-slate-100 flex justify-between items-center"><h2 className="text-sm font-black text-slate-400 uppercase tracking-widest">Condomínios Ativos</h2><span className="bg-blue-900 text-white px-3 py-1 rounded-full text-xs font-black">{condominios.length}</span></div>
-                <table className="w-full text-left border-collapse">
-                  <tbody className="divide-y divide-slate-100">
-                    {condominios.map(c => (
-                      <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-6 font-bold text-slate-700">{c.nome}</td>
-                        <td className="p-6 text-right flex justify-end gap-2">
-                          <button onClick={() => handleEdit(c)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl transition-all" title="Editar"><Pencil size={20}/></button>
-                          <button onClick={async () => { if(confirm('Excluir?')) { await supabase.from('condominios').delete().eq('id', c.id); fetchCondominios(); } }} className="text-red-400 p-2 hover:bg-red-50 rounded-xl transition-all" title="Excluir"><Trash2 size={20}/></button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+
+              <div className="mt-8 flex flex-col sm:flex-row items-center justify-end gap-3 pt-6 border-t border-gray-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetForm();
+                    setActiveTab('dashboard');
+                  }}
+                  disabled={saving}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  <XCircle className="w-4 h-4" />
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {saving ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : editingId ? (
+                    <Pencil className="w-4 h-4" />
+                  ) : (
+                    <PlusCircle className="w-4 h-4" />
+                  )}
+                  {saving
+                    ? 'Salvando...'
+                    : editingId
+                    ? 'Atualizar Condomínio'
+                    : 'Salvar Condomínio'}
+                </button>
               </div>
-            </div>
-          )
+            </form>
+          </section>
         )}
       </main>
     </div>

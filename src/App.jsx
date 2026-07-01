@@ -3,13 +3,16 @@ import { createClient } from '@supabase/supabase-js';
 import { 
   Building2, MapPin, Users, DollarSign, Trash2, 
   LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle,
-  CreditCard, Flame, ArrowUpCircle, ExternalLink, X
+  CreditCard, Flame, ArrowUpCircle, ExternalLink, X,
+  FileText, Calendar, Percent, Link2, ChevronDown, ChevronRight, TrendingDown
 } from 'lucide-react';
 
-// CONFIGURAÇÃO BLINDADA (CHAVE REAL REESTABELECIDA)
 const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+const BOLETO_FEE = 3.00;
+const FUNDO_RESERVA_RATE = 0.05;
 
 const INITIAL_FORM = {
   nome: '', endereco: '', cnpj: '', dados_bancarios: '', 
@@ -20,16 +23,46 @@ const INITIAL_FORM = {
   qtd_pnr: '', qtd_civis: '', despesa_estimada: ''
 };
 
+const INITIAL_CONTRACT_FORM = {
+  numero_contrato: '',
+  empresa_contratada: '',
+  valor_mensal: '',
+  tem_aditivo: false,
+  aditivo_descricao: '',
+  aditivo_valor: '',
+  prazo_inicio: '',
+  prazo_fim: '',
+  link_pdf: ''
+};
+
+const INITIAL_RATEIO_FORM = {
+  condominio_id: '',
+  percentual: ''
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [condominios, setCondominios] = useState([]);
+  const [contratos, setContratos] = useState([]);
+  const [rateios, setRateios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [selectedCondo, setSelectedCondo] = useState(null);
   const [form, setForm] = useState(INITIAL_FORM);
 
-  useEffect(() => { fetchCondominios(); }, []);
+  const [contractForm, setContractForm] = useState(INITIAL_CONTRACT_FORM);
+  const [editingContractId, setEditingContractId] = useState(null);
+  const [savingContract, setSavingContract] = useState(false);
+  const [expandedContract, setExpandedContract] = useState(null);
+  const [rateioForm, setRateioForm] = useState(INITIAL_RATEIO_FORM);
+  const [savingRateio, setSavingRateio] = useState(false);
+
+  useEffect(() => {
+    fetchCondominios();
+    fetchContratos();
+    fetchRateios();
+  }, []);
 
   async function fetchCondominios() {
     try {
@@ -38,9 +71,29 @@ export default function App() {
       if (error) throw error;
       setCondominios(data || []);
     } catch (err) {
-      alert('Erro de conexão: ' + err.message);
+      console.error(err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchContratos() {
+    try {
+      const { data, error } = await supabase.from('contratos').select('*').order('numero_contrato');
+      if (error) throw error;
+      setContratos(data || []);
+    } catch (err) {
+      console.error('Erro ao buscar contratos:', err);
+    }
+  }
+
+  async function fetchRateios() {
+    try {
+      const { data, error } = await supabase.from('rateios').select('*');
+      if (error) throw error;
+      setRateios(data || []);
+    } catch (err) {
+      console.error('Erro ao buscar rateios:', err);
     }
   }
 
@@ -97,10 +150,161 @@ export default function App() {
     }
   }
 
+  async function handleContractSubmit(e) {
+    e.preventDefault();
+    setSavingContract(true);
+    const payload = {
+      numero_contrato: contractForm.numero_contrato,
+      empresa_contratada: contractForm.empresa_contratada,
+      valor_mensal: Number(contractForm.valor_mensal) || 0,
+      tem_aditivo: contractForm.tem_aditivo,
+      aditivo_descricao: contractForm.aditivo_descricao,
+      aditivo_valor: Number(contractForm.aditivo_valor) || 0,
+      prazo_inicio: contractForm.prazo_inicio,
+      prazo_fim: contractForm.prazo_fim,
+      link_pdf: contractForm.link_pdf
+    };
+
+    try {
+      if (editingContractId) {
+        const { error } = await supabase.from('contratos').update(payload).eq('id', editingContractId);
+        if (error) throw error;
+        setEditingContractId(null);
+        alert('Contrato atualizado com sucesso!');
+      } else {
+        const { error } = await supabase.from('contratos').insert([payload]);
+        if (error) throw error;
+        alert('Contrato cadastrado com sucesso!');
+      }
+      setContractForm(INITIAL_CONTRACT_FORM);
+      fetchContratos();
+    } catch (err) {
+      alert('Erro ao salvar contrato: ' + err.message);
+    } finally {
+      setSavingContract(false);
+    }
+  }
+
+  function handleEditContract(c) {
+    setEditingContractId(c.id);
+    setContractForm({
+      numero_contrato: c.numero_contrato || '',
+      empresa_contratada: c.empresa_contratada || '',
+      valor_mensal: c.valor_mensal?.toString() || '',
+      tem_aditivo: c.tem_aditivo || false,
+      aditivo_descricao: c.aditivo_descricao || '',
+      aditivo_valor: c.aditivo_valor?.toString() || '',
+      prazo_inicio: c.prazo_inicio || '',
+      prazo_fim: c.prazo_fim || '',
+      link_pdf: c.link_pdf || ''
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function handleDeleteContract(id) {
+    if (!confirm('Tem certeza que deseja excluir este contrato? Os rateios vinculados também serão removidos.')) return;
+    try {
+      await supabase.from('rateios').delete().eq('contrato_id', id);
+      const { error } = await supabase.from('contratos').delete().eq('id', id);
+      if (error) throw error;
+      fetchContratos();
+      fetchRateios();
+      alert('Contrato excluído com sucesso!');
+    } catch (err) {
+      alert('Erro ao excluir contrato: ' + err.message);
+    }
+  }
+
+  async function handleRateioSubmit(contratoId) {
+    if (!rateioForm.condominio_id || !rateioForm.percentual) {
+      alert('Selecione um condomínio e informe o percentual.');
+      return;
+    }
+    setSavingRateio(true);
+    const payload = {
+      contrato_id: contratoId,
+      condominio_id: rateioForm.condominio_id,
+      percentual: Number(rateioForm.percentual) || 0
+    };
+
+    try {
+      const { error } = await supabase.from('rateios').insert([payload]);
+      if (error) throw error;
+      setRateioForm(INITIAL_RATEIO_FORM);
+      fetchRateios();
+    } catch (err) {
+      alert('Erro ao salvar rateio: ' + err.message);
+    } finally {
+      setSavingRateio(false);
+    }
+  }
+
+  async function handleDeleteRateio(id) {
+    try {
+      const { error } = await supabase.from('rateios').delete().eq('id', id);
+      if (error) throw error;
+      fetchRateios();
+    } catch (err) {
+      alert('Erro ao excluir rateio: ' + err.message);
+    }
+  }
+
   const calcularTaxa = (c) => {
     const total = (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
     if (total === 0) return 0;
     return (Number(c.despesa_estimada) / total) / 0.905;
+  };
+
+  const calcularReceita = (c) => {
+    const total = (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
+    return calcularTaxa(c) * total;
+  };
+
+  const calcularDeducoesContratos = (condominioId) => {
+    return rateios
+      .filter(r => r.condominio_id === condominioId)
+      .reduce((sum, r) => {
+        const contrato = contratos.find(ct => ct.id === r.contrato_id);
+        if (!contrato) return sum;
+        const valorContrato = (Number(contrato.valor_mensal) || 0) + (Number(contrato.aditivo_valor) || 0);
+        return sum + (valorContrato * (Number(r.percentual) || 0) / 100);
+      }, 0);
+  };
+
+  const calcularTotalUnidades = (c) => {
+    return (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
+  };
+
+  const calcularValorLiquido = (c) => {
+    const receita = calcularReceita(c);
+    const deducoes = calcularDeducoesContratos(c.id);
+    const boleto = BOLETO_FEE * calcularTotalUnidades(c);
+    return receita - deducoes - boleto;
+  };
+
+  const calcularFundoReserva = (c) => {
+    return calcularReceita(c) * FUNDO_RESERVA_RATE;
+  };
+
+  const formatCurrency = (val) => {
+    return Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const getRateiosForContract = (contratoId) => {
+    return rateios.filter(r => r.contrato_id === contratoId);
+  };
+
+  const getCondoName = (id) => {
+    const c = condominios.find(cd => cd.id === id);
+    return c ? c.nome : 'Desconhecido';
+  };
+
+  const getTotalPercentual = (contratoId) => {
+    return getRateiosForContract(contratoId).reduce((sum, r) => sum + (Number(r.percentual) || 0), 0);
+  };
+
+  const getValorTotalContrato = (c) => {
+    return (Number(c.valor_mensal) || 0) + (Number(c.aditivo_valor) || 0);
   };
 
   return (
@@ -113,47 +317,206 @@ export default function App() {
         <nav className="flex gap-2">
           <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Dashboard</button>
           <button onClick={() => setActiveTab('gerenciar')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'gerenciar' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Gerenciar</button>
+          <button onClick={() => setActiveTab('contratos')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'contratos' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Contratos</button>
         </nav>
       </header>
 
       <main className="max-w-7xl mx-auto p-8">
         {loading ? <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-blue-900" size={48} /></div> : (
           activeTab === 'dashboard' ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {condominios.map(c => (
-                <div key={c.id} onClick={() => setSelectedCondo(c)} className="cursor-pointer bg-white rounded-3xl shadow-sm border p-6 hover:shadow-xl transition-all group">
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="font-black text-xl text-blue-900 group-hover:text-blue-600">{c.nome}</h3>
-                    {c.possui_elevadores && <ArrowUpCircle className="text-orange-500" size={20} />}
+            <div>
+              <div className="mb-6 p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                <p className="text-sm text-blue-800 font-bold">
+                  <TrendingDown size={16} className="inline mr-1" />
+                  Valor Líquido de Repasse = Receita Total − Deduções de Contratos (Rateio) − Taxa de Boleto (R$ 3,00/unidade)
+                </p>
+                <p className="text-xs text-blue-600 mt-1">Fundo de Reserva (5%) é apenas informativo e não deduzido do repasse.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {condominios.map(c => {
+                  const liquido = calcularValorLiquido(c);
+                  const receita = calcularReceita(c);
+                  const deducoes = calcularDeducoesContratos(c.id);
+                  const boleto = BOLETO_FEE * calcularTotalUnidades(c);
+                  const fundo = calcularFundoReserva(c);
+                  return (
+                    <div key={c.id} onClick={() => setSelectedCondo(c)} className="cursor-pointer bg-white rounded-3xl shadow-sm border p-6 hover:shadow-xl transition-all group">
+                      <div className="flex justify-between items-start mb-4">
+                        <h3 className="font-black text-xl text-blue-900 group-hover:text-blue-600">{c.nome}</h3>
+                        {c.possui_elevadores && <ArrowUpCircle className="text-orange-500" size={20} />}
+                      </div>
+                      <p className="text-slate-500 text-sm flex items-center gap-1 mt-1"><MapPin size={14}/> {c.endereco || 'Brasília, DF'}</p>
+                      <div className="mt-4 p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                        <p className="text-[10px] font-black text-emerald-600 uppercase">Taxa Unitária (0,905)</p>
+                        <p className="text-2xl font-black text-emerald-700">R$ {formatCurrency(calcularTaxa(c))}</p>
+                      </div>
+                      <div className="mt-3 p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                        <p className="text-[10px] font-black text-blue-600 uppercase">Receita Total</p>
+                        <p className="text-xl font-black text-blue-700">R$ {formatCurrency(receita)}</p>
+                      </div>
+                      <div className="mt-3 space-y-1 text-xs text-slate-500">
+                        <div className="flex justify-between"><span>− Deduções Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(deducoes)}</span></div>
+                        <div className="flex justify-between"><span>− Taxa Boleto ({calcularTotalUnidades(c)} un.)</span><span className="font-bold text-red-500">R$ {formatCurrency(boleto)}</span></div>
+                        <div className="flex justify-between"><span className="text-slate-400">ℹ Fundo Reserva 5%</span><span className="font-bold text-slate-400">R$ {formatCurrency(fundo)}</span></div>
+                      </div>
+                      <div className="mt-3 p-4 bg-slate-900 rounded-2xl">
+                        <p className="text-[10px] font-black text-white uppercase">Valor Líquido de Repasse</p>
+                        <p className={`text-2xl font-black ${liquido >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>R$ {formatCurrency(liquido)}</p>
+                      </div>
+                      <p className="text-center text-[10px] text-slate-400 mt-4 font-bold uppercase tracking-widest">Clique para ver detalhes</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : activeTab === 'contratos' ? (
+            <div className="max-w-5xl mx-auto space-y-10">
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-900">
+                  {editingContractId ? <Pencil size={24}/> : <PlusCircle size={24}/>}
+                  {editingContractId ? 'EDITAR CONTRATO' : 'NOVO CONTRATO'}
+                </h2>
+                <form onSubmit={handleContractSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Nº Contrato</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.numero_contrato} onChange={e => setContractForm({...contractForm, numero_contrato: e.target.value})} required /></div>
+                  <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Empresa Contratada</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.empresa_contratada} onChange={e => setContractForm({...contractForm, empresa_contratada: e.target.value})} required /></div>
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Valor Mensal (R$)</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900" value={contractForm.valor_mensal} onChange={e => setContractForm({...contractForm, valor_mensal: e.target.value})} required /></div>
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Prazo Início</label><input type="date" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.prazo_inicio} onChange={e => setContractForm({...contractForm, prazo_inicio: e.target.value})} /></div>
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Prazo Fim</label><input type="date" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.prazo_fim} onChange={e => setContractForm({...contractForm, prazo_fim: e.target.value})} /></div>
+                  <div className="md:col-span-3"><label className="text-xs font-black text-slate-400 uppercase ml-1">Link PDF do Contrato</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.link_pdf} onChange={e => setContractForm({...contractForm, link_pdf: e.target.value})} placeholder="https://..." /></div>
+
+                  <div className="md:col-span-3 flex items-center gap-3 p-4 bg-slate-100 rounded-xl">
+                    <input type="checkbox" id="adit" checked={contractForm.tem_aditivo} onChange={e => setContractForm({...contractForm, tem_aditivo: e.target.checked})} className="w-5 h-5 text-blue-600" />
+                    <label htmlFor="adit" className="font-bold text-blue-900">Possui Aditivo?</label>
                   </div>
-                  <p className="text-slate-500 text-sm flex items-center gap-1 mt-1"><MapPin size={14}/> {c.endereco || 'Brasília, DF'}</p>
-                  <div className="mt-6 p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
-                    <p className="text-[10px] font-black text-emerald-600 uppercase">Taxa Unitária (0,905)</p>
-                    <p className="text-3xl font-black text-emerald-700">R$ {calcularTaxa(c).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+
+                  {contractForm.tem_aditivo && (
+                    <>
+                      <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Descrição do Aditivo</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.aditivo_descricao} onChange={e => setContractForm({...contractForm, aditivo_descricao: e.target.value})} placeholder="Ex: Prorrogação de 12 meses" /></div>
+                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Valor Aditivo (R$)</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900" value={contractForm.aditivo_valor} onChange={e => setContractForm({...contractForm, aditivo_valor: e.target.value})} /></div>
+                    </>
+                  )}
+
+                  <div className="md:col-span-3 flex gap-4">
+                    <button disabled={savingContract} className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all">
+                      {savingContract ? <Loader2 className="animate-spin mx-auto" /> : (editingContractId ? 'SALVAR ALTERAÇÕES' : 'SALVAR CONTRATO')}
+                    </button>
+                    {editingContractId && <button type="button" onClick={() => {setEditingContractId(null); setContractForm(INITIAL_CONTRACT_FORM)}} className="bg-slate-200 text-slate-600 px-8 rounded-2xl font-black">CANCELAR</button>}
                   </div>
-                  <p className="text-center text-[10px] text-slate-400 mt-4 font-bold uppercase tracking-widest">Clique para ver detalhes</p>
-                </div>
-              ))}
+                </form>
+              </div>
+
+              <div className="space-y-4">
+                {contratos.length === 0 && (
+                  <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-12 text-center text-slate-400 font-bold">
+                    Nenhum contrato cadastrado. Crie o primeiro acima.
+                  </div>
+                )}
+                {contratos.map(ct => {
+                  const totalPct = getTotalPercentual(ct.id);
+                  const contractRateios = getRateiosForContract(ct.id);
+                  const isExpanded = expandedContract === ct.id;
+                  return (
+                    <div key={ct.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                      <div className="p-6">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              <FileText size={20} className="text-blue-900" />
+                              <h3 className="font-black text-lg text-blue-900">Contrato {ct.numero_contrato}</h3>
+                              {ct.tem_aditivo && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-black uppercase">Aditivo</span>}
+                            </div>
+                            <p className="text-slate-600 font-bold text-sm">{ct.empresa_contratada}</p>
+                            <div className="flex flex-wrap gap-4 mt-3 text-xs text-slate-500">
+                              <span className="flex items-center gap-1"><DollarSign size={14}/> Valor: <strong className="text-blue-900">R$ {formatCurrency(getValorTotalContrato(ct))}</strong></span>
+                              {ct.prazo_inicio && <span className="flex items-center gap-1"><Calendar size={14}/> {ct.prazo_inicio} → {ct.prazo_fim || '—'}</span>}
+                              {ct.link_pdf?.startsWith('http') && <a href={ct.link_pdf} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-bold underline"><Link2 size={14}/> PDF</a>}
+                            </div>
+                            {ct.tem_aditivo && ct.aditivo_descricao && (
+                              <p className="text-xs text-amber-600 mt-2"><strong>Aditivo:</strong> {ct.aditivo_descricao} {ct.aditivo_valor ? `(+R$ ${formatCurrency(ct.aditivo_valor)})` : ''}</p>
+                            )}
+                            <div className="mt-3 flex items-center gap-2">
+                              <Percent size={14} className="text-slate-400" />
+                              <span className={`text-xs font-black ${totalPct === 100 ? 'text-emerald-600' : 'text-red-500'}`}>Rateio: {totalPct}%</span>
+                              <span className="text-xs text-slate-400">({contractRateios.length} condomínio(s))</span>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => handleEditContract(ct)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl transition-all"><Pencil size={20}/></button>
+                            <button onClick={() => handleDeleteContract(ct.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={20}/></button>
+                            <button onClick={() => setExpandedContract(isExpanded ? null : ct.id)} className="text-slate-400 p-2 hover:bg-slate-100 rounded-xl transition-all">
+                              {isExpanded ? <ChevronDown size={20}/> : <ChevronRight size={20}/>}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="border-t border-slate-100 bg-slate-50 p-6">
+                          <h4 className="text-sm font-black text-slate-700 uppercase mb-4 flex items-center gap-2"><Percent size={16}/> Rateio por Condomínio</h4>
+                          {contractRateios.length > 0 ? (
+                            <div className="space-y-2 mb-4">
+                              {contractRateios.map(r => (
+                                <div key={r.id} className="flex items-center justify-between bg-white rounded-xl p-3 border border-slate-100">
+                                  <div className="flex items-center gap-3">
+                                    <Building2 size={16} className="text-blue-600" />
+                                    <span className="font-bold text-sm text-slate-700">{getCondoName(r.condominio_id)}</span>
+                                  </div>
+                                  <div className="flex items-center gap-4">
+                                    <span className="font-black text-blue-900">{Number(r.percentual).toLocaleString('pt-BR')}%</span>
+                                    <span className="text-xs text-slate-500">R$ {formatCurrency(getValorTotalContrato(ct) * (Number(r.percentual) || 0) / 100)}</span>
+                                    <button onClick={() => handleDeleteRateio(r.id)} className="text-red-400 p-1 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-400 mb-4">Nenhum rateio cadastrado para este contrato.</p>
+                          )}
+
+                          <div className="flex flex-wrap gap-3 items-end bg-white rounded-xl p-4 border border-slate-200">
+                            <div className="flex-1 min-w-[200px]">
+                              <label className="text-xs font-black text-slate-400 uppercase ml-1">Condomínio</label>
+                              <select className="w-full bg-slate-50 border-none rounded-xl p-3 mt-1" value={rateioForm.condominio_id} onChange={e => setRateioForm({...rateioForm, condominio_id: e.target.value})}>
+                                <option value="">Selecione...</option>
+                                {condominios.map(cd => (
+                                  <option key={cd.id} value={cd.id}>{cd.nome}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="w-32">
+                              <label className="text-xs font-black text-slate-400 uppercase ml-1">Percentual (%)</label>
+                              <input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-3 mt-1" value={rateioForm.percentual} onChange={e => setRateioForm({...rateioForm, percentual: e.target.value})} placeholder="Ex: 30" />
+                            </div>
+                            <button type="button" disabled={savingRateio} onClick={() => handleRateioSubmit(ct.id)} className="bg-blue-900 text-white px-6 py-3 rounded-xl font-black hover:bg-blue-800 transition-all">
+                              {savingRateio ? <Loader2 className="animate-spin" size={18}/> : 'ADICIONAR'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ) : (
             <div className="max-w-5xl mx-auto space-y-10">
               <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
                 <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-900">
-                  {editingId ? <Pencil size={24}/> : <PlusCircle size={24}/>} 
+                  {editingId ? <Pencil size={24}/> : <PlusCircle size={24}/>}
                   {editingId ? 'EDITAR CONDOMÍNIO' : 'NOVO CADASTRO'}
                 </h2>
                 <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Nome</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} required /></div>
                   <div><label className="text-xs font-black text-slate-400 uppercase ml-1">CNPJ</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.cnpj} onChange={e => setForm({...form, cnpj: e.target.value})} /></div>
                   <div className="md:col-span-3"><label className="text-xs font-black text-slate-400 uppercase ml-1">Endereço</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.endereco} onChange={e => setForm({...form, endereco: e.target.value})} /></div>
-                  
+
                   <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd PNR</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.qtd_pnr} onChange={e => setForm({...form, qtd_pnr: e.target.value})} required /></div>
                   <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd Civis</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.qtd_civis} onChange={e => setForm({...form, qtd_civis: e.target.value})} required /></div>
                   <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Despesa Estimada</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900" value={form.despesa_estimada} onChange={e => setForm({...form, despesa_estimada: e.target.value})} required /></div>
-                  
+
                   <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Dados Bancários</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.dados_bancarios} onChange={e => setForm({...form, dados_bancarios: e.target.value})} /></div>
                   <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Saldo Fundo Reserva</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.saldo_fundo_reserva} onChange={e => setForm({...form, saldo_fundo_reserva: e.target.value})} /></div>
-                  
+
                   <div className="md:col-span-3"><label className="text-xs font-black text-slate-400 uppercase ml-1">Projetos de Incêndio (Link)</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.projetos_incendio} onChange={e => setForm({...form, projetos_incendio: e.target.value})} placeholder="https://..." /></div>
 
                   <div className="md:col-span-3 flex items-center gap-3 p-4 bg-slate-100 rounded-xl">
@@ -187,7 +550,7 @@ export default function App() {
                         <td className="p-6 font-bold text-slate-700">{c.nome}</td>
                         <td className="p-6 text-right flex justify-end gap-2">
                           <button onClick={() => handleEdit(c)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl transition-all"><Pencil size={20}/></button>
-                          <button onClick={() => handleDelete(c.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={20}/></button>
+                          <button onClick={async () => { if(confirm('Excluir?')) { await supabase.from('condominios').delete().eq('id', c.id); fetchCondominios(); } }} className="text-red-400 p-2 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={20}/></button>
                         </td>
                       </tr>
                     ))}
@@ -211,14 +574,14 @@ export default function App() {
               <div><p className="text-[10px] font-black text-slate-400 uppercase">Endereço</p><p className="font-bold">{selectedCondo.endereco || '—'}</p></div>
               <div><p className="text-[10px] font-black text-slate-400 uppercase">Dados Bancários</p><p className="font-bold">{selectedCondo.dados_bancarios || '—'}</p></div>
               <div><p className="text-[10px] font-black text-slate-400 uppercase">Saldo Fundo Reserva</p><p className="font-bold text-emerald-600">R$ {Number(selectedCondo.saldo_fundo_reserva || 0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</p></div>
-              
+
               <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
                 <p className="text-[10px] font-black text-slate-400 uppercase">PNR / Civis</p>
                 <p className="font-bold">{selectedCondo.qtd_pnr} / {selectedCondo.qtd_civis}</p>
               </div>
               <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
                 <p className="text-[10px] font-black text-emerald-600 uppercase">Taxa Unitária</p>
-                <p className="font-bold text-emerald-700">R$ {calcularTaxa(selectedCondo).toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                <p className="font-bold text-emerald-700">R$ {formatCurrency(calcularTaxa(selectedCondo))}</p>
               </div>
 
               <div className="md:col-span-2 border-t pt-4">
@@ -234,6 +597,17 @@ export default function App() {
                   ) : (
                     <p>{selectedCondo.projetos_incendio || 'Nenhuma observação cadastrada.'}</p>
                   )}
+                </div>
+              </div>
+
+              <div className="md:col-span-2 border-t pt-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Repasse Líquido</p>
+                <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-slate-500">Receita Total</span><span className="font-bold text-blue-700">R$ {formatCurrency(calcularReceita(selectedCondo))}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">− Deduções de Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(calcularDeducoesContratos(selectedCondo.id))}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">− Taxa de Boleto ({calcularTotalUnidades(selectedCondo)} un.)</span><span className="font-bold text-red-500">R$ {formatCurrency(BOLETO_FEE * calcularTotalUnidades(selectedCondo))}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-400">ℹ Fundo de Reserva 5% (informativo)</span><span className="font-bold text-slate-400">R$ {formatCurrency(calcularFundoReserva(selectedCondo))}</span></div>
+                  <div className="flex justify-between border-t pt-2"><span className="font-black text-slate-700">Valor Líquido de Repasse</span><span className={`font-black ${calcularValorLiquido(selectedCondo) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>R$ {formatCurrency(calcularValorLiquido(selectedCondo))}</span></div>
                 </div>
               </div>
             </div>

@@ -289,8 +289,9 @@ export default function App() {
     const agesc = calcularAGESC(c);
     const deducoes = calcularDeducoesContratos(c.id);
     const boleto = BOLETO_FEE;
-    // Fundo de Reserva (5%) não é mais subtraído, pois é enviado junto ao montante principal
-    return receita - agesc - deducoes - boleto;
+    // Taxa de Boleto (R$ 3,00) agora é somada como restituição/cortesia aos condomínios
+    // Fundo de Reserva (5%) não é subtraído, pois é enviado junto ao montante principal
+    return receita - agesc - deducoes + boleto;
   };
 
   const formatCurrency = (val) => {
@@ -335,7 +336,7 @@ export default function App() {
               <div className="mb-6 p-4 bg-blue-50 rounded-2xl border border-blue-100">
                 <p className="text-sm text-blue-800 font-bold">
                   <TrendingDown size={16} className="inline mr-1" />
-                  Valor Líquido de Repasse = Receita Bruta − Taxa AGESC (4,5%) − Deduções de Contratos (Rateio) − R$ 3,00 (Boleto fixo)
+                  Valor Líquido de Repasse = Receita Bruta − Taxa AGESC (4,5%) − Deduções de Contratos (Rateio) + R$ 3,00 (Restituição Boleto - Cortesia)
                 </p>
                 <p className="text-xs text-blue-600 mt-1 flex items-center gap-1"><Info size={12}/> O Fundo de Reserva (5%) está incluso no montante total enviado ao condomínio.</p>
               </div>
@@ -372,7 +373,10 @@ export default function App() {
                           <span className="font-bold text-slate-600">R$ {formatCurrency(fundo)} <span className="text-[9px] uppercase ml-1 opacity-70">[Incluso]</span></span>
                         </div>
                         <div className="flex justify-between"><span>− Deduções Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(deducoes)}</span></div>
-                        <div className="flex justify-between"><span>− Taxa Boleto (fixa)</span><span className="font-bold text-red-500">R$ {formatCurrency(boleto)}</span></div>
+                        <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
+                          <span className="font-black text-emerald-700">+ Restituição Boleto (Cortesia)</span>
+                          <span className="font-bold text-emerald-700">R$ {formatCurrency(boleto)}</span>
+                        </div>
                       </div>
                       <div className="mt-3 p-4 bg-slate-900 rounded-2xl">
                         <p className="text-[10px] font-black text-white uppercase">Valor Líquido de Repasse</p>
@@ -628,7 +632,10 @@ export default function App() {
                     <span className="font-bold text-slate-600">R$ {formatCurrency(calcularFundoReserva(selectedCondo))} <span className="text-[9px] uppercase ml-1 opacity-70">[Incluso no Repasse]</span></span>
                   </div>
                   <div className="flex justify-between"><span className="text-slate-500">− Deduções de Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(calcularDeducoesContratos(selectedCondo.id))}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">− Taxa de Boleto (fixa por condomínio)</span><span className="font-bold text-red-500">R$ {formatCurrency(BOLETO_FEE)}</span></div>
+                  <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
+                    <span className="font-black text-emerald-700">+ Restituição Boleto (Cortesia)</span>
+                    <span className="font-bold text-emerald-700">R$ {formatCurrency(BOLETO_FEE)}</span>
+                  </div>
                   <div className="flex justify-between border-t pt-2"><span className="font-black text-slate-700">Valor Líquido de Repasse</span><span className={`font-black ${calcularValorLiquido(selectedCondo) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>R$ {formatCurrency(calcularValorLiquido(selectedCondo))}</span></div>
                 </div>
               </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { 
-  Building2, MapPin, Users, DollarSign, Trash2, 
+import {
+  Building2, MapPin, Users, DollarSign, Trash2,
   LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle,
   CreditCard, Flame, ArrowUpCircle, ExternalLink, X,
   FileText, Calendar, Percent, Link2, ChevronDown, ChevronRight, TrendingDown, Info, CheckCircle2, AlertCircle
@@ -16,9 +16,9 @@ const AGESC_FEE_RATE = 0.045;
 const FUNDO_RESERVA_RATE = 0.05;
 
 const INITIAL_FORM = {
-  nome: '', endereco: '', cnpj: '', dados_bancarios: '', 
-  saldo_fundo_reserva: '', projetos_incendio: '', 
-  possui_elevadores: false, qtd_elevadores: '', 
+  nome: '', endereco: '', cnpj: '', dados_bancarios: '',
+  saldo_fundo_reserva: '', projetos_incendio: '',
+  possui_elevadores: false, qtd_elevadores: '',
   elevadores_operacao: '', elevadores_manutencao: '',
   empresa_elevadores: '', status_manutencao: '',
   qtd_pnr: '', qtd_civis: '', despesa_estimada: ''
@@ -50,10 +50,7 @@ export default function App() {
   const [contractForm, setContractForm] = useState(INITIAL_CONTRACT_FORM);
   const [editingContractId, setEditingContractId] = useState(null);
   const [savingContract, setSavingContract] = useState(false);
-  const [expandedContract, setExpandedContract] = useState(null);
-  
-  // State for advanced allocations in the form
-  const [allocations, setAllocations] = useState({}); // { id: { checked: bool, valor: string } }
+  const [allocations, setAllocations] = useState({});
 
   useEffect(() => {
     fetchCondominios();
@@ -129,10 +126,27 @@ export default function App() {
     }
   }
 
+  function handleEdit(c) {
+    setEditingId(c.id);
+    setForm({ ...c });
+    setActiveTab('gerenciar');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function handleDelete(id) {
+    if (!confirm('Tem certeza que deseja excluir este condomínio?')) return;
+    try {
+      const { error } = await supabase.from('condominios').delete().eq('id', id);
+      if (error) throw error;
+      fetchCondominios();
+    } catch (err) {
+      alert('Erro ao excluir: ' + err.message);
+    }
+  }
+
   async function handleContractSubmit(e) {
     e.preventDefault();
     setSavingContract(true);
-    
     const contractPayload = {
       numero_contrato: contractForm.numero_contrato,
       empresa_contratada: contractForm.empresa_contratada,
@@ -147,7 +161,6 @@ export default function App() {
 
     try {
       let contractId = editingContractId;
-      
       if (editingContractId) {
         const { error } = await supabase.from('contratos').update(contractPayload).eq('id', editingContractId);
         if (error) throw error;
@@ -157,9 +170,7 @@ export default function App() {
         contractId = data[0].id;
       }
 
-      // Sync Rateios
       await supabase.from('rateios').delete().eq('contrato_id', contractId);
-      
       const rateioInserts = Object.entries(allocations)
         .filter(([_, data]) => data.checked)
         .map(([id, data]) => ({
@@ -202,7 +213,6 @@ export default function App() {
       link_pdf: c.link_pdf || ''
     });
 
-    // Load existing allocations
     const existing = rateios.filter(r => r.contrato_id === c.id);
     const newAllocations = {};
     existing.forEach(r => {
@@ -211,6 +221,18 @@ export default function App() {
     });
     setAllocations(newAllocations);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function handleDeleteContract(id) {
+    if (!confirm('Excluir contrato?')) return;
+    try {
+      await supabase.from('rateios').delete().eq('contrato_id', id);
+      await supabase.from('contratos').delete().eq('id', id);
+      fetchContratos();
+      fetchRateios();
+    } catch (err) {
+      alert('Erro ao excluir: ' + err.message);
+    }
   }
 
   const calcularTaxa = (c) => {
@@ -225,14 +247,14 @@ export default function App() {
   };
 
   const calcularDeducoesContratos = (condominioId) => {
-    const direct = rateios.filter(r => r.condominio_id === condominioId).reduce((sum, r) => sum + Number(r.valor), 0);
-    const global = rateios.filter(r => r.is_all_condos).reduce((sum, r) => sum + (Number(r.valor) / (condominios.length || 1)), 0);
+    const direct = rateios.filter(r => r.condominio_id === condominioId).reduce((sum, r) => sum + (Number(r.valor) || 0), 0);
+    const global = rateios.filter(r => r.is_all_condos).reduce((sum, r) => sum + ((Number(r.valor) || 0) / (condominios.length || 1)), 0);
     return direct + global;
   };
 
   const calcularAGESC = (c) => calcularReceita(c) * AGESC_FEE_RATE;
   const calcularFundoReserva = (c) => calcularReceita(c) * FUNDO_RESERVA_RATE;
-  
+
   const calcularValorLiquido = (c) => {
     const receita = calcularReceita(c);
     const agesc = calcularAGESC(c);
@@ -241,12 +263,8 @@ export default function App() {
   };
 
   const formatCurrency = (val) => Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
   const getContractTotal = (c) => (Number(c.valor_mensal) || 0) + (Number(c.aditivo_valor) || 0);
-  
-  const currentAllocatedTotal = Object.values(allocations)
-    .filter(a => a.checked)
-    .reduce((sum, a) => sum + (Number(a.valor) || 0), 0);
+  const currentAllocatedTotal = Object.values(allocations).filter(a => a.checked).reduce((sum, a) => sum + (Number(a.valor) || 0), 0);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
@@ -265,24 +283,64 @@ export default function App() {
       <main className="max-w-7xl mx-auto p-8">
         {loading ? <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-blue-900" size={48} /></div> : (
           activeTab === 'dashboard' ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {condominios.map(c => (
-                <div key={c.id} onClick={() => setSelectedCondo(c)} className="cursor-pointer bg-white rounded-3xl shadow-sm border p-6 hover:shadow-xl transition-all group">
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="font-black text-xl text-blue-900 group-hover:text-blue-600">{c.nome}</h3>
-                    {c.possui_elevadores && <ArrowUpCircle className="text-orange-500" size={20} />}
-                  </div>
-                  <p className="text-slate-500 text-sm flex items-center gap-1 mt-1"><MapPin size={14}/> {c.endereco || 'Brasília, DF'}</p>
-                  <div className="mt-4 p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
-                    <p className="text-[10px] font-black text-emerald-600 uppercase">Taxa Unitária</p>
-                    <p className="text-2xl font-black text-emerald-700">R$ {formatCurrency(calcularTaxa(c))}</p>
-                  </div>
-                  <div className="mt-3 p-4 bg-slate-900 rounded-2xl">
-                    <p className="text-[10px] font-black text-white uppercase">Valor Líquido de Repasse</p>
-                    <p className={`text-2xl font-black ${calcularValorLiquido(c) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>R$ {formatCurrency(calcularValorLiquido(c))}</p>
-                  </div>
-                </div>
-              ))}
+            <div>
+              <div className="mb-6 p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                <p className="text-sm text-blue-800 font-bold">
+                  <TrendingDown size={16} className="inline mr-1" />
+                  Valor Líquido de Repasse = Receita Bruta − Taxa AGESC (4,5%) − Deduções de Contratos (Rateio) + R$ 3,00 (Restituição Boleto - Cortesia)
+                </p>
+                <p className="text-xs text-blue-600 mt-1 flex items-center gap-1"><Info size={12}/> O Fundo de Reserva (5%) está incluso no montante total enviado ao condomínio.</p>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {condominios.map(c => {
+                  const liquido = calcularValorLiquido(c);
+                  const receita = calcularReceita(c);
+                  const agesc = calcularAGESC(c);
+                  const fundo = calcularFundoReserva(c);
+                  const deducoes = calcularDeducoesContratos(c.id);
+                  return (
+                    <div key={c.id} onClick={() => setSelectedCondo(c)} className="cursor-pointer bg-white rounded-3xl shadow-sm border p-6 hover:shadow-xl transition-all group">
+                      <div className="flex justify-between items-start mb-4">
+                        <h3 className="font-black text-xl text-blue-900 group-hover:text-blue-600">{c.nome}</h3>
+                        {c.possui_elevadores && <ArrowUpCircle className="text-orange-500" size={20} />}
+                      </div>
+                      <p className="text-slate-500 text-sm flex items-center gap-1 mt-1"><MapPin size={14}/> {c.endereco || 'Brasília, DF'}</p>
+                      
+                      <div className="mt-4 p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                        <p className="text-[10px] font-black text-emerald-600 uppercase">Taxa Unitária (0,905)</p>
+                        <p className="text-2xl font-black text-emerald-700">R$ {formatCurrency(calcularTaxa(c))}</p>
+                      </div>
+
+                      <div className="mt-3 p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                        <p className="text-[10px] font-black text-blue-600 uppercase">Receita Bruta</p>
+                        <p className="text-xl font-black text-blue-700">R$ {formatCurrency(receita)}</p>
+                      </div>
+
+                      <div className="mt-3 space-y-1 text-xs text-slate-500">
+                        <div className="flex justify-between items-center bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                          <span className="font-black text-amber-700">− Taxa AGESC (4,5%)</span>
+                          <span className="font-bold text-amber-700">R$ {formatCurrency(agesc)}</span>
+                        </div>
+                        <div className="flex justify-between items-center bg-slate-100 border border-slate-200 rounded-lg px-2 py-1">
+                          <span className="font-black text-slate-600">Fundo de Reserva (5%)</span>
+                          <span className="font-bold text-slate-600">R$ {formatCurrency(fundo)} <span className="text-[9px] uppercase ml-1 opacity-70">[Incluso]</span></span>
+                        </div>
+                        <div className="flex justify-between"><span>− Deduções Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(deducoes)}</span></div>
+                        <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
+                          <span className="font-black text-emerald-700">+ Restituição Boleto (Cortesia)</span>
+                          <span className="font-bold text-emerald-700">R$ {formatCurrency(BOLETO_FEE)}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 p-4 bg-slate-900 rounded-2xl">
+                        <p className="text-[10px] font-black text-white uppercase">Valor Líquido de Repasse</p>
+                        <p className={`text-2xl font-black ${liquido >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>R$ {formatCurrency(liquido)}</p>
+                      </div>
+                      <p className="text-center text-[10px] text-slate-400 mt-4 font-bold uppercase tracking-widest">Clique para ver detalhes</p>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ) : activeTab === 'contratos' ? (
             <div className="max-w-5xl mx-auto space-y-10">
@@ -310,11 +368,9 @@ export default function App() {
                     </>
                   )}
 
-                  {/* Advanced Allocation Section */}
                   <div className="md:col-span-3 border-t pt-6 mt-4">
                     <h3 className="text-sm font-black text-slate-400 uppercase mb-4 flex items-center gap-2"><Percent size={18}/> Guia de Rateio Avançada</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                      {/* Special Targets */}
                       {[ {id: 'agesc', nome: 'AGESC (Sede)'}, {id: 'all', nome: 'Todos os Condomínios (Rateio Global)'} ].map(target => (
                         <div key={target.id} className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${allocations[target.id]?.checked ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-100'}`}>
                           <div className="flex items-center gap-3">
@@ -326,7 +382,6 @@ export default function App() {
                           )}
                         </div>
                       ))}
-                      {/* Condos */}
                       {condominios.map(c => (
                         <div key={c.id} className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${allocations[c.id]?.checked ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-100'}`}>
                           <div className="flex items-center gap-3">
@@ -340,7 +395,6 @@ export default function App() {
                       ))}
                     </div>
 
-                    {/* Conference Dashboard */}
                     <div className="mt-6 p-6 bg-slate-900 rounded-3xl text-white flex flex-col md:flex-row justify-between items-center gap-6">
                       <div className="text-center md:text-left">
                         <p className="text-[10px] font-black text-slate-400 uppercase">Total do Contrato</p>
@@ -374,7 +428,7 @@ export default function App() {
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => handleEditContract(ct)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl"><Pencil size={20}/></button>
-                      <button onClick={async () => { if(confirm('Excluir?')) { await supabase.from('contratos').delete().eq('id', ct.id); fetchContratos(); fetchRateios(); } }} className="text-red-400 p-2 hover:bg-red-50 rounded-xl"><Trash2 size={20}/></button>
+                      <button onClick={() => handleDeleteContract(ct.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-xl"><Trash2 size={20}/></button>
                     </div>
                   </div>
                 ))}
@@ -407,7 +461,8 @@ export default function App() {
                     </>
                   )}
                   <div className="md:col-span-3 flex gap-4">
-                    <button disabled={saving} className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all">{saving ? <Loader2 className="animate-spin mx-auto" /> : 'SALVAR'}</button>
+                    <button disabled={saving} className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all">{saving ? <Loader2 className="animate-spin mx-auto" /> : (editingId ? 'SALVAR ALTERAÇÕES' : 'SALVAR CONDOMÍNIO')}</button>
+                    {editingId && <button type="button" onClick={() => {setEditingId(null); setForm(INITIAL_FORM)}} className="bg-slate-200 text-slate-600 px-8 rounded-2xl font-black">CANCELAR</button>}
                   </div>
                 </form>
               </div>
@@ -418,10 +473,11 @@ export default function App() {
                       <tr key={c.id} className="hover:bg-slate-50 transition-colors">
                         <td className="p-6 font-bold text-slate-700">{c.nome}</td>
                         <td className="p-6 text-right flex justify-end gap-2">
-                          <button onClick={() => { setEditingId(c.id); setForm({...c}); setActiveTab('gerenciar'); }} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl"><Pencil size={20}/></button>
+                          <button onClick={() => handleEdit(c)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl"><Pencil size={20}/></button>
+                          <button onClick={() => handleDelete(c.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-xl"><Trash2 size={20}/></button>
                         </td>
                       </tr>
-                    ))}
+                    ))} 
                   </tbody>
                 </table>
               </div>
@@ -469,6 +525,10 @@ export default function App() {
                   <div className="flex justify-between items-center bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
                     <span className="font-black text-amber-700">− Taxa AGESC (4,5%)</span>
                     <span className="font-bold text-amber-700">R$ {formatCurrency(calcularAGESC(selectedCondo))}</span>
+                  </div>
+                  <div className="flex justify-between items-center bg-slate-100 border border-slate-200 rounded-lg px-2 py-1">
+                    <span className="font-black text-slate-600">Fundo de Reserva (5%)</span>
+                    <span className="font-bold text-slate-600">R$ {formatCurrency(calcularFundoReserva(selectedCondo))} <span className="text-[9px] uppercase ml-1 opacity-70">[Incluso no Repasse]</span></span>
                   </div>
                   <div className="flex justify-between"><span className="text-slate-500">− Deduções de Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(calcularDeducoesContratos(selectedCondo.id))}</span></div>
                   <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">

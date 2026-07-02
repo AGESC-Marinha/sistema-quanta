@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import {
+import { 
   Building2, MapPin, Users, DollarSign, Trash2, 
   LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle,
   CreditCard, Flame, ArrowUpCircle, ExternalLink, X,
-  FileText, Calendar, Percent, Link2, ChevronDown, ChevronRight, 
-  TrendingDown, Info, CheckCircle2, AlertTriangle, ShieldCheck, Globe
+  FileText, Calendar, Percent, Link2, ChevronDown, ChevronRight, TrendingDown, Info
 } from 'lucide-react';
 
 const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
@@ -34,8 +33,12 @@ const INITIAL_CONTRACT_FORM = {
   aditivo_valor: '',
   prazo_inicio: '',
   prazo_fim: '',
-  link_pdf: '',
-  allocations: []
+  link_pdf: ''
+};
+
+const INITIAL_RATEIO_FORM = {
+  condominio_id: '',
+  percentual: ''
 };
 
 export default function App() {
@@ -53,6 +56,8 @@ export default function App() {
   const [editingContractId, setEditingContractId] = useState(null);
   const [savingContract, setSavingContract] = useState(false);
   const [expandedContract, setExpandedContract] = useState(null);
+  const [rateioForm, setRateioForm] = useState(INITIAL_RATEIO_FORM);
+  const [savingRateio, setSavingRateio] = useState(false);
 
   useEffect(() => {
     fetchCondominios();
@@ -135,6 +140,17 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  async function handleDelete(id) {
+    if (!confirm('Tem certeza que deseja excluir este condomínio?')) return;
+    try {
+      const { error } = await supabase.from('condominios').delete().eq('id', id);
+      if (error) throw error;
+      fetchCondominios();
+    } catch (err) {
+      alert('Erro ao excluir: ' + err.message);
+    }
+  }
+
   async function handleContractSubmit(e) {
     e.preventDefault();
     setSavingContract(true);
@@ -151,35 +167,18 @@ export default function App() {
     };
 
     try {
-      let contractId = editingContractId;
       if (editingContractId) {
         const { error } = await supabase.from('contratos').update(payload).eq('id', editingContractId);
         if (error) throw error;
+        setEditingContractId(null);
+        alert('Contrato atualizado com sucesso!');
       } else {
-        const { data, error } = await supabase.from('contratos').insert([payload]).select();
+        const { error } = await supabase.from('contratos').insert([payload]);
         if (error) throw error;
-        contractId = data[0].id;
+        alert('Contrato cadastrado com sucesso!');
       }
-
-      // Update Allocations (Rateios)
-      await supabase.from('rateios').delete().eq('contrato_id', contractId);
-      if (contractForm.allocations.length > 0) {
-        const toInsert = contractForm.allocations.map(a => ({
-          contrato_id: contractId,
-          condominio_id: a.condominio_id || null,
-          is_agesc: a.is_agesc || false,
-          is_all_condos: a.is_all_condos || false,
-          valor: Number(a.valor) || 0
-        }));
-        const { error: rateioError } = await supabase.from('rateios').insert(toInsert);
-        if (rateioError) throw rateioError;
-      }
-
-      alert('Contrato e rateios salvos com sucesso!');
       setContractForm(INITIAL_CONTRACT_FORM);
-      setEditingContractId(null);
       fetchContratos();
-      fetchRateios();
     } catch (err) {
       alert('Erro ao salvar contrato: ' + err.message);
     } finally {
@@ -187,10 +186,8 @@ export default function App() {
     }
   }
 
-  async function handleEditContract(c) {
+  function handleEditContract(c) {
     setEditingContractId(c.id);
-    const { data: allocationsData } = await supabase.from('rateios').select('*').eq('contrato_id', c.id);
-    
     setContractForm({
       numero_contrato: c.numero_contrato || '',
       empresa_contratada: c.empresa_contratada || '',
@@ -200,8 +197,7 @@ export default function App() {
       aditivo_valor: c.aditivo_valor?.toString() || '',
       prazo_inicio: c.prazo_inicio || '',
       prazo_fim: c.prazo_fim || '',
-      link_pdf: c.link_pdf || '',
-      allocations: allocationsData || []
+      link_pdf: c.link_pdf || ''
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -220,52 +216,39 @@ export default function App() {
     }
   }
 
-  const toggleAllocation = (type, id = null) => {
-    let newAllocations = [...contractForm.allocations];
-    const index = newAllocations.findIndex(a => 
-      type === 'condo' ? a.condominio_id === id : 
-      type === 'agesc' ? a.is_agesc : a.is_all_condos
-    );
-
-    if (index > -1) {
-      newAllocations.splice(index, 1);
-    } else {
-      newAllocations.push({
-        condominio_id: id,
-        is_agesc: type === 'agesc',
-        is_all_condos: type === 'all',
-        valor: ''
-      });
+  async function handleRateioSubmit(contratoId) {
+    if (!rateioForm.condominio_id || !rateioForm.percentual) {
+      alert('Selecione um condomínio e informe o percentual.');
+      return;
     }
-    setContractForm({ ...contractForm, allocations: newAllocations });
-  };
+    setSavingRateio(true);
+    const payload = {
+      contrato_id: contratoId,
+      condominio_id: rateioForm.condominio_id,
+      percentual: Number(rateioForm.percentual) || 0
+    };
 
-  const updateAllocationValue = (type, val, id = null) => {
-    let newAllocations = [...contractForm.allocations];
-    const index = newAllocations.findIndex(a => 
-      type === 'condo' ? a.condominio_id === id : 
-      type === 'agesc' ? a.is_agesc : a.is_all_condos
-    );
-    if (index > -1) {
-      newAllocations[index].valor = val;
-      setContractForm({ ...contractForm, allocations: newAllocations });
+    try {
+      const { error } = await supabase.from('rateios').insert([payload]);
+      if (error) throw error;
+      setRateioForm(INITIAL_RATEIO_FORM);
+      fetchRateios();
+    } catch (err) {
+      alert('Erro ao salvar rateio: ' + err.message);
+    } finally {
+      setSavingRateio(false);
     }
-  };
+  }
 
-  const isAllocated = (type, id = null) => {
-    return contractForm.allocations.some(a => 
-      type === 'condo' ? a.condominio_id === id : 
-      type === 'agesc' ? a.is_agesc : a.is_all_condos
-    );
-  };
-
-  const getAllocationValue = (type, id = null) => {
-    const found = contractForm.allocations.find(a => 
-      type === 'condo' ? a.condominio_id === id : 
-      type === 'agesc' ? a.is_agesc : a.is_all_condos
-    );
-    return found ? found.valor : '';
-  };
+  async function handleDeleteRateio(id) {
+    try {
+      const { error } = await supabase.from('rateios').delete().eq('id', id);
+      if (error) throw error;
+      fetchRateios();
+    } catch (err) {
+      alert('Erro ao excluir rateio: ' + err.message);
+    }
+  }
 
   const calcularTaxa = (c) => {
     const total = (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
@@ -279,19 +262,27 @@ export default function App() {
   };
 
   const calcularDeducoesContratos = (condominioId) => {
-    const direct = rateios
+    return rateios
       .filter(r => r.condominio_id === condominioId)
-      .reduce((sum, r) => sum + (Number(r.valor) || 0), 0);
-    
-    const shared = rateios
-      .filter(r => r.is_all_condos)
-      .reduce((sum, r) => sum + ((Number(r.valor) || 0) / (condominios.length || 1)), 0);
-
-    return direct + shared;
+      .reduce((sum, r) => {
+        const contrato = contratos.find(ct => ct.id === r.contrato_id);
+        if (!contrato) return sum;
+        const valorContrato = (Number(contrato.valor_mensal) || 0) + (Number(contrato.aditivo_valor) || 0);
+        return sum + (valorContrato * (Number(r.percentual) || 0) / 100);
+      }, 0);
   };
 
-  const calcularAGESC = (c) => calcularReceita(c) * AGESC_FEE_RATE;
-  const calcularFundoReserva = (c) => calcularReceita(c) * FUNDO_RESERVA_RATE;
+  const calcularTotalUnidades = (c) => {
+    return (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
+  };
+
+  const calcularAGESC = (c) => {
+    return calcularReceita(c) * AGESC_FEE_RATE;
+  };
+
+  const calcularFundoReserva = (c) => {
+    return calcularReceita(c) * FUNDO_RESERVA_RATE;
+  };
 
   const calcularValorLiquido = (c) => {
     const receita = calcularReceita(c);
@@ -305,14 +296,22 @@ export default function App() {
     return Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  const getValorTotalContrato = (c) => {
-    return (Number(c.valor_mensal) || 0) + (c.tem_aditivo ? (Number(c.aditivo_valor) || 0) : 0);
+  const getRateiosForContract = (contratoId) => {
+    return rateios.filter(r => r.contrato_id === contratoId);
   };
 
-  const contractTotal = (Number(contractForm.valor_mensal) || 0) + (contractForm.tem_aditivo ? (Number(contractForm.aditivo_valor) || 0) : 0);
-  const totalAllocated = contractForm.allocations.reduce((acc, cur) => acc + (Number(cur.valor) || 0), 0);
-  const diff = contractTotal - totalAllocated;
-  const isConferenceOk = Math.abs(diff) < 0.01;
+  const getCondoName = (id) => {
+    const c = condominios.find(cd => cd.id === id);
+    return c ? c.nome : 'Desconhecido';
+  };
+
+  const getTotalPercentual = (contratoId) => {
+    return getRateiosForContract(contratoId).reduce((sum, r) => sum + (Number(r.percentual) || 0), 0);
+  };
+
+  const getValorTotalContrato = (c) => {
+    return (Number(c.valor_mensal) || 0) + (Number(c.aditivo_valor) || 0);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
@@ -381,6 +380,7 @@ export default function App() {
                         <p className="text-[10px] font-black text-white uppercase">Valor Líquido de Repasse</p>
                         <p className={`text-2xl font-black ${liquido >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>R$ {formatCurrency(liquido)}</p>
                       </div>
+                      <p className="text-center text-[10px] text-slate-400 mt-4 font-bold uppercase tracking-widest">Clique para ver detalhes</p>
                     </div>
                   );
                 })}
@@ -413,87 +413,6 @@ export default function App() {
                     </>
                   )}
 
-                  <div className="md:col-span-3 border-t pt-6">
-                    <h3 className="text-sm font-black text-slate-700 uppercase mb-4 flex items-center gap-2"><Percent size={18}/> Alocação de Rateio</h3>
-                    <div className="grid grid-cols-1 gap-3 max-h-80 overflow-y-auto pr-2 custom-scrollbar">
-                      <div className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${isAllocated('agesc') ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100'}`}>
-                        <div className="flex items-center gap-3">
-                          <input type="checkbox" checked={isAllocated('agesc')} onChange={() => toggleAllocation('agesc')} className="w-5 h-5 text-blue-600" />
-                          <div className="flex items-center gap-2">
-                            <ShieldCheck size={18} className="text-blue-600" />
-                            <span className="font-bold text-slate-700">AGESC (Associação)</span>
-                          </div>
-                        </div>
-                        {isAllocated('agesc') && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">Valor:</span>
-                            <input type="number" step="0.01" className="w-32 bg-white border-none rounded-lg p-2 font-bold text-blue-900 shadow-sm" value={getAllocationValue('agesc')} onChange={e => updateAllocationValue('agesc', e.target.value)} placeholder="0,00" />
-                          </div>
-                        )}
-                      </div>
-
-                      <div className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${isAllocated('all') ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100'}`}>
-                        <div className="flex items-center gap-3">
-                          <input type="checkbox" checked={isAllocated('all')} onChange={() => toggleAllocation('all')} className="w-5 h-5 text-blue-600" />
-                          <div className="flex items-center gap-2">
-                            <Globe size={18} className="text-blue-600" />
-                            <span className="font-bold text-slate-700">Todos os Condomínios</span>
-                          </div>
-                        </div>
-                        {isAllocated('all') && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-black text-slate-400 uppercase">Valor:</span>
-                            <input type="number" step="0.01" className="w-32 bg-white border-none rounded-lg p-2 font-bold text-blue-900 shadow-sm" value={getAllocationValue('all')} onChange={e => updateAllocationValue('all', e.target.value)} placeholder="0,00" />
-                          </div>
-                        )}
-                      </div>
-
-                      {condominios.map(cd => (
-                        <div key={cd.id} className={`flex items-center justify-between p-4 rounded-2xl border transition-all ${isAllocated('condo', cd.id) ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-100'}`}>
-                          <div className="flex items-center gap-3">
-                            <input type="checkbox" checked={isAllocated('condo', cd.id)} onChange={() => toggleAllocation('condo', cd.id)} className="w-5 h-5 text-blue-600" />
-                            <div className="flex items-center gap-2">
-                              <Building2 size={18} className="text-slate-400" />
-                              <span className="font-bold text-slate-700">{cd.nome}</span>
-                            </div>
-                          </div>
-                          {isAllocated('condo', cd.id) && (
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] font-black text-slate-400 uppercase">Valor:</span>
-                              <input type="number" step="0.01" className="w-32 bg-white border-none rounded-lg p-2 font-bold text-blue-900 shadow-sm" value={getAllocationValue('condo', cd.id)} onChange={e => updateAllocationValue('condo', e.target.value, cd.id)} placeholder="0,00" />
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="md:col-span-3">
-                    <div className={`p-6 rounded-3xl border-2 flex flex-col md:flex-row justify-between items-center gap-6 ${isConferenceOk ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-                      <div className="flex items-center gap-4">
-                        <div className={`p-3 rounded-2xl ${isConferenceOk ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`}>
-                          {isConferenceOk ? <CheckCircle2 size={32}/> : <AlertTriangle size={32}/>}
-                        </div>
-                        <div>
-                          <h4 className={`font-black text-lg ${isConferenceOk ? 'text-emerald-800' : 'text-red-800'}`}>Dashboard de Conferência</h4>
-                          <p className={`text-sm font-bold ${isConferenceOk ? 'text-emerald-600' : 'text-red-600'}`}>
-                            {isConferenceOk ? 'Valores alocados perfeitamente!' : `Divergência de R$ ${formatCurrency(Math.abs(diff))}`}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex gap-8">
-                        <div className="text-center">
-                          <p className="text-[10px] font-black text-slate-400 uppercase">Total Contrato</p>
-                          <p className="text-xl font-black text-slate-700">R$ {formatCurrency(contractTotal)}</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-[10px] font-black text-slate-400 uppercase">Total Alocado</p>
-                          <p className={`text-xl font-black ${isConferenceOk ? 'text-emerald-600' : 'text-red-600'}`}>R$ {formatCurrency(totalAllocated)}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
                   <div className="md:col-span-3 flex gap-4">
                     <button disabled={savingContract} className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all">
                       {savingContract ? <Loader2 className="animate-spin mx-auto" /> : (editingContractId ? 'SALVAR ALTERAÇÕES' : 'SALVAR CONTRATO')}
@@ -504,9 +423,15 @@ export default function App() {
               </div>
 
               <div className="space-y-4">
+                {contratos.length === 0 && (
+                  <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-12 text-center text-slate-400 font-bold">
+                    Nenhum contrato cadastrado. Crie o primeiro acima.
+                  </div>
+                )}
                 {contratos.map(ct => {
+                  const totalPct = getTotalPercentual(ct.id);
+                  const contractRateios = getRateiosForContract(ct.id);
                   const isExpanded = expandedContract === ct.id;
-                  const contractRateios = rateios.filter(r => r.contrato_id === ct.id);
                   return (
                     <div key={ct.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
                       <div className="p-6">
@@ -521,6 +446,15 @@ export default function App() {
                             <div className="flex flex-wrap gap-4 mt-3 text-xs text-slate-500">
                               <span className="flex items-center gap-1"><DollarSign size={14}/> Valor: <strong className="text-blue-900">R$ {formatCurrency(getValorTotalContrato(ct))}</strong></span>
                               {ct.prazo_inicio && <span className="flex items-center gap-1"><Calendar size={14}/> {ct.prazo_inicio} → {ct.prazo_fim || '—'}</span>}
+                              {ct.link_pdf?.startsWith('http') && <a href={ct.link_pdf} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-bold underline"><Link2 size={14}/> PDF</a>}
+                            </div>
+                            {ct.tem_aditivo && ct.aditivo_descricao && (
+                              <p className="text-xs text-amber-600 mt-2"><strong>Aditivo:</strong> {ct.aditivo_descricao} {ct.aditivo_valor ? `(+R$ ${formatCurrency(ct.aditivo_valor)})` : ''}</p>
+                            )}
+                            <div className="mt-3 flex items-center gap-2">
+                              <Percent size={14} className="text-slate-400" />
+                              <span className={`text-xs font-black ${totalPct === 100 ? 'text-emerald-600' : 'text-red-500'}`}>Rateio: {totalPct}%</span>
+                              <span className="text-xs text-slate-400">({contractRateios.length} condomínio(s))</span>
                             </div>
                           </div>
                           <div className="flex gap-2">
@@ -532,21 +466,47 @@ export default function App() {
                           </div>
                         </div>
                       </div>
+
                       {isExpanded && (
                         <div className="border-t border-slate-100 bg-slate-50 p-6">
-                          <h4 className="text-sm font-black text-slate-700 uppercase mb-4">Detalhamento de Rateio</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            {contractRateios.map(r => (
-                              <div key={r.id} className="bg-white p-3 rounded-xl border border-slate-200 flex justify-between items-center">
-                                <div className="flex items-center gap-2">
-                                  {r.is_agesc ? <ShieldCheck size={16} className="text-blue-600"/> : r.is_all_condos ? <Globe size={16} className="text-blue-600"/> : <Building2 size={16} className="text-slate-400"/>}
-                                  <span className="text-sm font-bold text-slate-700">
-                                    {r.is_agesc ? 'AGESC' : r.is_all_condos ? 'Todos os Condomínios' : condominios.find(c => c.id === r.condominio_id)?.nome || 'Desconhecido'}
-                                  </span>
+                          <h4 className="text-sm font-black text-slate-700 uppercase mb-4 flex items-center gap-2"><Percent size={16}/> Rateio por Condomínio</h4>
+                          {contractRateios.length > 0 ? (
+                            <div className="space-y-2 mb-4">
+                              {contractRateios.map(r => (
+                                <div key={r.id} className="flex items-center justify-between bg-white rounded-xl p-3 border border-slate-100">
+                                  <div className="flex items-center gap-3">
+                                    <Building2 size={16} className="text-blue-600" />
+                                    <span className="font-bold text-sm text-slate-700">{getCondoName(r.condominio_id)}</span>
+                                  </div>
+                                  <div className="flex items-center gap-4">
+                                    <span className="font-black text-blue-900">{Number(r.percentual).toLocaleString('pt-BR')}%</span>
+                                    <span className="text-xs text-slate-500">R$ {formatCurrency(getValorTotalContrato(ct) * (Number(r.percentual) || 0) / 100)}</span>
+                                    <button onClick={() => handleDeleteRateio(r.id)} className="text-red-400 p-1 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
+                                  </div>
                                 </div>
-                                <span className="font-black text-blue-900">R$ {formatCurrency(r.valor)}</span>
-                              </div>
-                            ))}
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-400 mb-4">Nenhum rateio cadastrado para este contrato.</p>
+                          )}
+
+                          <div className="flex flex-wrap gap-3 items-end bg-white rounded-xl p-4 border border-slate-200">
+                            <div className="flex-1 min-w-[200px]">
+                              <label className="text-xs font-black text-slate-400 uppercase ml-1">Condomínio</label>
+                              <select className="w-full bg-slate-50 border-none rounded-xl p-3 mt-1" value={rateioForm.condominio_id} onChange={e => setRateioForm({...rateioForm, condominio_id: e.target.value})}>
+                                <option value="">Selecione...</option>
+                                {condominios.map(cd => (
+                                  <option key={cd.id} value={cd.id}>{cd.nome}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="w-32">
+                              <label className="text-xs font-black text-slate-400 uppercase ml-1">Percentual (%)</label>
+                              <input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-3 mt-1" value={rateioForm.percentual} onChange={e => setRateioForm({...rateioForm, percentual: e.target.value})} placeholder="Ex: 30" />
+                            </div>
+                            <button type="button" disabled={savingRateio} onClick={() => handleRateioSubmit(ct.id)} className="bg-blue-900 text-white px-6 py-3 rounded-xl font-black hover:bg-blue-800 transition-all">
+                              {savingRateio ? <Loader2 className="animate-spin" size={18}/> : 'ADICIONAR'}
+                            </button>
                           </div>
                         </div>
                       )}
@@ -570,6 +530,26 @@ export default function App() {
                   <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd PNR</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.qtd_pnr} onChange={e => setForm({...form, qtd_pnr: e.target.value})} required /></div>
                   <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd Civis</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.qtd_civis} onChange={e => setForm({...form, qtd_civis: e.target.value})} required /></div>
                   <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Despesa Estimada</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900" value={form.despesa_estimada} onChange={e => setForm({...form, despesa_estimada: e.target.value})} required /></div>
+
+                  <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Dados Bancários</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.dados_bancarios} onChange={e => setForm({...form, dados_bancarios: e.target.value})} /></div>
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Saldo Fundo Reserva</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.saldo_fundo_reserva} onChange={e => setForm({...form, saldo_fundo_reserva: e.target.value})} /></div>
+
+                  <div className="md:col-span-3"><label className="text-xs font-black text-slate-400 uppercase ml-1">Projetos de Incêndio (Link)</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.projetos_incendio} onChange={e => setForm({...form, projetos_incendio: e.target.value})} placeholder="https://..." /></div>
+
+                  <div className="md:col-span-3 flex items-center gap-3 p-4 bg-slate-100 rounded-xl">
+                    <input type="checkbox" id="elev" checked={form.possui_elevadores} onChange={e => setForm({...form, possui_elevadores: e.target.checked})} className="w-5 h-5 text-blue-600" />
+                    <label htmlFor="elev" className="font-bold text-blue-900">Possui Elevadores?</label>
+                  </div>
+
+                  {form.possui_elevadores && (
+                    <>
+                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd Total</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.qtd_elevadores} onChange={e => setForm({...form, qtd_elevadores: e.target.value})} /></div>
+                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Em Operação</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.elevadores_operacao} onChange={e => setForm({...form, elevadores_operacao: e.target.value})} /></div>
+                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Em Manutenção</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.elevadores_manutencao} onChange={e => setForm({...form, elevadores_manutencao: e.target.value})} /></div>
+                      <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Empresa Responsável</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.empresa_elevadores} onChange={e => setForm({...form, empresa_elevadores: e.target.value})} /></div>
+                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Status Manutenção</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.status_manutencao} onChange={e => setForm({...form, status_manutencao: e.target.value})} placeholder="Ex: Em dia" /></div>
+                    </>
+                  )}
 
                   <div className="md:col-span-3 flex gap-4">
                     <button disabled={saving} className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all">
@@ -606,7 +586,57 @@ export default function App() {
               <h2 className="text-xl font-black flex items-center gap-2"><Building2 /> {selectedCondo.nome}</h2>
               <button onClick={() => setSelectedCondo(null)} className="p-2 hover:bg-white/10 rounded-full"><X /></button>
             </div>
+            
             <div className="p-8 pb-10 grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 overflow-y-auto custom-scrollbar">
+              {/* CNPJ e Endereço */}
+              <div><p className="text-[10px] font-black text-slate-400 uppercase">CNPJ</p><p className="font-bold">{selectedCondo.cnpj || '—'}</p></div>
+              <div><p className="text-[10px] font-black text-slate-400 uppercase">Endereço</p><p className="font-bold">{selectedCondo.endereco || '—'}</p></div>
+              
+              {/* Dados Bancários e Saldo Fundo Reserva */}
+              <div><p className="text-[10px] font-black text-slate-400 uppercase">Dados Bancários</p><p className="font-bold">{selectedCondo.dados_bancarios || '—'}</p></div>
+              <div><p className="text-[10px] font-black text-slate-400 uppercase">Saldo Fundo Reserva</p><p className="font-bold text-emerald-600">R$ {Number(selectedCondo.saldo_fundo_reserva || 0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</p></div>
+
+              {/* PNR / Civis e Taxa Unitária */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                <p className="text-[10px] font-black text-slate-400 uppercase">PNR / Civis</p>
+                <p className="font-bold">{selectedCondo.qtd_pnr} / {selectedCondo.qtd_civis}</p>
+              </div>
+              <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+                <p className="text-[10px] font-black text-emerald-600 uppercase">Taxa Unitária</p>
+                <p className="font-bold text-emerald-700">R$ {formatCurrency(calcularTaxa(selectedCondo))}</p>
+              </div>
+
+              {/* Seção de Elevadores */}
+              <div className="md:col-span-2 border-t pt-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Elevadores</p>
+                {selectedCondo.possui_elevadores ? (
+                  <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
+                    <p className="font-bold text-orange-800">Sim ({selectedCondo.qtd_elevadores} total)</p>
+                    <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                      <p>Operação: <span className="font-black">{selectedCondo.elevadores_operacao}</span></p>
+                      <p>Manutenção: <span className="font-black">{selectedCondo.elevadores_manutencao}</span></p>
+                      <p>Empresa: <span className="font-black">{selectedCondo.empresa_elevadores || '—'}</span></p>
+                      <p>Status: <span className="font-black">{selectedCondo.status_manutencao || '—'}</span></p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="font-bold text-slate-500">Não possui elevadores cadastrados.</p>
+                )}
+              </div>
+
+              {/* Projetos de Incêndio / Observações */}
+              <div className="md:col-span-2 border-t pt-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Projetos de Incêndio / Observações</p>
+                <div className="bg-slate-50 p-4 rounded-xl text-sm">
+                  {selectedCondo.projetos_incendio?.startsWith('http') ? (
+                    <a href={selectedCondo.projetos_incendio} target="_blank" rel="noreferrer" className="text-blue-600 font-bold underline flex items-center gap-1">Abrir Link Externo <ExternalLink size={14}/></a>
+                  ) : (
+                    <p>{selectedCondo.projetos_incendio || 'Nenhuma observação cadastrada.'}</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Ficha Técnica Financeira */}
               <div className="md:col-span-2 border-t pt-4">
                 <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Ficha Técnica Financeira</p>
                 <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm">
@@ -614,6 +644,10 @@ export default function App() {
                   <div className="flex justify-between items-center bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
                     <span className="font-black text-amber-700">− Taxa AGESC (4,5%)</span>
                     <span className="font-bold text-amber-700">R$ {formatCurrency(calcularAGESC(selectedCondo))}</span>
+                  </div>
+                  <div className="flex justify-between items-center bg-slate-100 border border-slate-200 rounded-lg px-2 py-1">
+                    <span className="font-black text-slate-600">Fundo de Reserva (5%)</span>
+                    <span className="font-bold text-slate-600">R$ {formatCurrency(calcularFundoReserva(selectedCondo))} <span className="text-[9px] uppercase ml-1 opacity-70">[Incluso no Repasse]</span></span>
                   </div>
                   <div className="flex justify-between"><span className="text-slate-500">− Deduções de Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(calcularDeducoesContratos(selectedCondo.id))}</span></div>
                   <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
@@ -624,7 +658,10 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <div className="p-6 bg-slate-50 flex justify-end shrink-0"><button onClick={() => setSelectedCondo(null)} className="bg-blue-900 text-white px-8 py-3 rounded-xl font-black">FECHAR</button></div>
+
+            <div className="p-6 bg-slate-50 flex justify-end shrink-0">
+              <button onClick={() => setSelectedCondo(null)} className="bg-blue-900 text-white px-8 py-3 rounded-xl font-black">FECHAR</button>
+            </div>
           </div>
         </div>
       )}

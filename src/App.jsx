@@ -7,9 +7,9 @@ import {
   Lock, History, Archive, Clock, Database, Zap
 } from 'lucide-react';
 
-// Configuração Supabase — chaves fixas (NÃO usar import.meta.env)
-const supabaseUrl = 'https://seudoprojeto.supabase.co';
-const supabaseKey = 'sua-chave-anon-key-aqui';
+// Configuração Supabase — chaves fixas
+const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const MESES = [
@@ -353,257 +353,279 @@ const App = () => {
   };
 
   // Renderização do Dashboard
-  const renderDashboard = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800">Dashboard Financeiro</h2>
-          <p className="text-slate-500">Visão detalhada dos repasses por condomínio</p>
+  const renderDashboard = () => {
+    if (loading || condominios.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+          <Database size={40} className="mb-2" />
+          <p>Carregando dados ou nenhum condomínio encontrado...</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="Buscar condomínio..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">Dashboard Financeiro</h2>
+            <p className="text-slate-500">Visão detalhada dos repasses por condomínio</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+              <input
+                type="text"
+                placeholder="Buscar condomínio..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${
-        dashboardUsaSnapshot
-          ? 'bg-amber-50 border-amber-200 text-amber-700'
-          : 'bg-blue-50 border-blue-200 text-blue-700'
-      }`}>
-        {dashboardUsaSnapshot ? <Database size={18} /> : <Zap size={18} />}
-        <span className="text-sm font-medium">
-          {dashboardUsaSnapshot
-            ? `Snapshot Gravado — Exibindo valores salvos de ${MESES.find(m => m.value === mesSelecionado)?.label || ''}/${anoSelecionado}`
-            : 'Cálculos em Tempo Real — Os valores exibidos são calculados dinamicamente a partir dos dados atuais'}
-        </span>
-      </div>
+        <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${
+          dashboardUsaSnapshot
+            ? 'bg-amber-50 border-amber-200 text-amber-700'
+            : 'bg-blue-50 border-blue-200 text-blue-700'
+        }`}>
+          {dashboardUsaSnapshot ? <Database size={18} /> : <Zap size={18} />}
+          <span className="text-sm font-medium">
+            {dashboardUsaSnapshot
+              ? `Snapshot Gravado — Exibindo valores salvos de ${MESES.find(m => m.value === mesSelecionado)?.label || ''}/${anoSelecionado}`
+              : 'Cálculos em Tempo Real — Os valores exibidos são calculados dinamicamente a partir dos dados atuais'}
+          </span>
+        </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {condominios
-          .filter(c => c && c.nome && c.nome.toLowerCase().includes(searchTerm.toLowerCase()))
-          .map(condo => {
-            const calculado = calcularValoresCondominio(condo);
-            const snapshot = fechamentoMap[condo.id];
-            const valores = snapshot && snapshot.status === 'fechado' ? {
-              receitaBruta: Number(snapshot.receita_bruta || 0),
-              taxaAgesc: Number(snapshot.taxa_agesc || 0),
-              fundoReserva: Number(snapshot.fundo_reserva || 0),
-              deducoesContratos: Number(snapshot.deducoes_contratos || 0),
-              restituicaoBoleto: Number(snapshot.restituicao_boleto || 0),
-              valorLiquido: Number(snapshot.valor_liquido || 0),
-              taxaUnitaria: calculado.taxaUnitaria
-            } : calculado;
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {condominios
+            .filter(c => c && c.nome && c.nome.toLowerCase().includes(searchTerm.toLowerCase()))
+            .map(condo => {
+              const calculado = calcularValoresCondominio(condo);
+              const snapshot = fechamentoMap[condo.id];
+              const valores = snapshot && snapshot.status === 'fechado' ? {
+                receitaBruta: Number(snapshot.receita_bruta || 0),
+                taxaAgesc: Number(snapshot.taxa_agesc || 0),
+                fundoReserva: Number(snapshot.fundo_reserva || 0),
+                deducoesContratos: Number(snapshot.deducoes_contratos || 0),
+                restituicaoBoleto: Number(snapshot.restituicao_boleto || 0),
+                valorLiquido: Number(snapshot.valor_liquido || 0),
+                taxaUnitaria: calculado.taxaUnitaria
+              } : calculado;
 
-            return (
-              <div
-                key={condo.id}
-                onClick={() => setSelectedCondo(condo)}
-                className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md transition-all cursor-pointer"
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <h3 className="font-semibold text-slate-800">{condo.nome}</h3>
-                  <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">
-                    TU: R$ {valores.taxaUnitaria.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                  </span>
+              return (
+                <div
+                  key={condo.id}
+                  onClick={() => setSelectedCondo(condo)}
+                  className="bg-white rounded-xl shadow-sm border border-slate-200 p-5 hover:shadow-md transition-all cursor-pointer"
+                >
+                  <div className="flex justify-between items-start mb-3">
+                    <h3 className="font-semibold text-slate-800">{condo.nome}</h3>
+                    <span className="text-xs text-green-700 bg-green-100 px-2 py-1 rounded font-medium">
+                      TU: R$ {valores.taxaUnitaria.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between bg-blue-50 border border-blue-100 rounded-md px-3 py-2">
+                      <span className="text-blue-600 font-medium">Receita Bruta</span>
+                      <span className="font-bold text-blue-700">R$ {formatCurrency(valores.receitaBruta)}</span>
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-2 space-y-1">
+                      <div className="flex justify-between text-red-600">
+                        <span>Taxa AGESC (4.5%)</span>
+                        <span>- R$ {formatCurrency(valores.taxaAgesc)}</span>
+                      </div>
+                      <div className="flex justify-between text-red-600">
+                        <span>Fundo Reserva (5%)</span>
+                        <span>- R$ {formatCurrency(valores.fundoReserva)}</span>
+                      </div>
+                      <div className="flex justify-between text-red-600">
+                        <span>Dedução Contratos</span>
+                        <span>- R$ {formatCurrency(valores.deducoesContratos)}</span>
+                      </div>
+                      <div className="flex justify-between text-green-600">
+                        <span>Restituição Boleto</span>
+                        <span>+ R$ {formatCurrency(valores.restituicaoBoleto)}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between bg-slate-800 text-white rounded-md px-3 py-2 mt-2">
+                      <span className="font-semibold">Líquido para Repasse</span>
+                      <span className="font-bold">R$ {formatCurrency(valores.valorLiquido)}</span>
+                    </div>
+                  </div>
                 </div>
-
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Receita Bruta</span>
-                    <span className="font-medium text-slate-700">R$ {formatCurrency(valores.receitaBruta)}</span>
-                  </div>
-
-                  <div className="border-t border-slate-100 pt-2 space-y-1">
-                    <div className="flex justify-between text-red-600">
-                      <span>Taxa AGESC (4.5%)</span>
-                      <span>- R$ {formatCurrency(valores.taxaAgesc)}</span>
-                    </div>
-                    <div className="flex justify-between text-red-600">
-                      <span>Fundo Reserva (5%)</span>
-                      <span>- R$ {formatCurrency(valores.fundoReserva)}</span>
-                    </div>
-                    <div className="flex justify-between text-red-600">
-                      <span>Dedução Contratos</span>
-                      <span>- R$ {formatCurrency(valores.deducoesContratos)}</span>
-                    </div>
-                    <div className="flex justify-between text-green-600">
-                      <span>Restituição Boleto</span>
-                      <span>+ R$ {formatCurrency(valores.restituicaoBoleto)}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between border-t border-slate-200 pt-2 mt-2">
-                    <span className="font-semibold text-slate-700">Líquido para Repasse</span>
-                    <span className="font-bold text-blue-600">R$ {formatCurrency(valores.valorLiquido)}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   // Renderização da aba Fechamento
-  const renderFechamento = () => (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-800">Fechamento Mensal</h2>
-        <p className="text-slate-500">Motor de Cálculo de Repasses com Persistência</p>
-      </div>
+  const renderFechamento = () => {
+    if (loading || condominios.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+          <Database size={40} className="mb-2" />
+          <p>Carregando dados ou nenhum condomínio encontrado...</p>
+        </div>
+      );
+    }
 
-      {mesEncerrado && (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700">
-          <Lock size={20} />
-          <div>
-            <p className="font-semibold">Mês Encerrado</p>
-            <p className="text-sm">
-              O período de {MESES.find(m => m.value === mesSelecionado)?.label || ''}/{anoSelecionado} está fechado.
-              As edições estão bloqueadas para garantir a integridade do histórico.
-            </p>
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800">Fechamento Mensal</h2>
+          <p className="text-slate-500">Motor de Cálculo de Repasses com Persistência</p>
+        </div>
+
+        {mesEncerrado && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700">
+            <Lock size={20} />
+            <div>
+              <p className="font-semibold">Mês Encerrado</p>
+              <p className="text-sm">
+                O período de {MESES.find(m => m.value === mesSelecionado)?.label || ''}/{anoSelecionado} está fechado.
+                As edições estão bloqueadas para garantir a integridade do histórico.
+              </p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Calendar size={20} className="text-blue-600" />
-          <h3 className="font-semibold text-slate-800">Período do Fechamento</h3>
-        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Calendar size={20} className="text-blue-600" />
+            <h3 className="font-semibold text-slate-800">Período do Fechamento</h3>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">Mês</label>
-            <select
-              value={mesSelecionado}
-              onChange={(e) => setMesSelecionado(Number(e.target.value))}
-              disabled={mesEncerrado}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <div>
+              <label className="block text-sm font-medium text-slate-600 mb-1">Mês</label>
+              <select
+                value={mesSelecionado}
+                onChange={(e) => setMesSelecionado(Number(e.target.value))}
+                disabled={mesEncerrado}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              >
+                {MESES.map(m => (
+                  <option key={m.value} value={m.value}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-600 mb-1">Ano</label>
+              <select
+                value={anoSelecionado}
+                onChange={(e) => setAnoSelecionado(Number(e.target.value))}
+                disabled={mesEncerrado}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              >
+                {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 2 + i).map(ano => (
+                  <option key={ano} value={ano}>{ano}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => salvarFechamento('rascunho')}
+              disabled={salvandoFechamento || mesEncerrado || carregandoFechamento || loading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
             >
-              {MESES.map(m => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-600 mb-1">Ano</label>
-            <select
-              value={anoSelecionado}
-              onChange={(e) => setAnoSelecionado(Number(e.target.value))}
-              disabled={mesEncerrado}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              <Save size={18} />
+              {salvandoFechamento ? 'Salvando...' : 'Salvar Rascunho'}
+            </button>
+            <button
+              onClick={() => salvarFechamento('fechado')}
+              disabled={salvandoFechamento || mesEncerrado || carregandoFechamento || loading}
+              className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
             >
-              {Array.from({ length: 6 }, (_, i) => new Date().getFullYear() - 2 + i).map(ano => (
-                <option key={ano} value={ano}>{ano}</option>
-              ))}
-            </select>
+              <Lock size={18} />
+              {salvandoFechamento ? 'Encerrando...' : 'Encerrar Mês'}
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => salvarFechamento('rascunho')}
-            disabled={salvandoFechamento || mesEncerrado || carregandoFechamento || loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-          >
-            <Save size={18} />
-            {salvandoFechamento ? 'Salvando...' : 'Salvar Rascunho'}
-          </button>
-          <button
-            onClick={() => salvarFechamento('fechado')}
-            disabled={salvandoFechamento || mesEncerrado || carregandoFechamento || loading}
-            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
-          >
-            <Lock size={18} />
-            {salvandoFechamento ? 'Encerrando...' : 'Encerrar Mês'}
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Building2 size={20} className="text-slate-600" />
-            <h3 className="font-semibold text-slate-800">
-              Valores Calculados — {MESES.find(m => m.value === mesSelecionado)?.label || ''}/{anoSelecionado}
-            </h3>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Building2 size={20} className="text-slate-600" />
+              <h3 className="font-semibold text-slate-800">
+                Valores Calculados — {MESES.find(m => m.value === mesSelecionado)?.label || ''}/{anoSelecionado}
+              </h3>
+            </div>
+            {carregandoFechamento && <span className="text-sm text-slate-400">Carregando...</span>}
           </div>
-          {carregandoFechamento && <span className="text-sm text-slate-400">Carregando...</span>}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-slate-600">
+                  <th className="py-2 px-3">Condomínio</th>
+                  <th className="py-2 px-3 text-right">Receita Bruta</th>
+                  <th className="py-2 px-3 text-right">Taxa AGESC</th>
+                  <th className="py-2 px-3 text-right">Fundo Reserva</th>
+                  <th className="py-2 px-3 text-right">Deduções</th>
+                  <th className="py-2 px-3 text-right">Restituição</th>
+                  <th className="py-2 px-3 text-right">Valor Líquido</th>
+                  <th className="py-2 px-3 text-center">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {condominios.map(condo => {
+                  const valores = calcularValoresCondominio(condo);
+                  const salvo = fechamentoMap[condo.id];
+                  return (
+                    <tr key={condo.id} className="border-b border-slate-100 hover:bg-slate-50">
+                      <td className="py-2 px-3 font-medium text-slate-700">{condo.nome}</td>
+                      <td className="py-2 px-3 text-right">R$ {formatCurrency(valores.receitaBruta)}</td>
+                      <td className="py-2 px-3 text-right text-red-600">R$ {formatCurrency(valores.taxaAgesc)}</td>
+                      <td className="py-2 px-3 text-right text-red-600">R$ {formatCurrency(valores.fundoReserva)}</td>
+                      <td className="py-2 px-3 text-right text-red-600">R$ {formatCurrency(valores.deducoesContratos)}</td>
+                      <td className="py-2 px-3 text-right text-green-600">R$ {formatCurrency(valores.restituicaoBoleto)}</td>
+                      <td className="py-2 px-3 text-right font-bold text-blue-600">R$ {formatCurrency(valores.valorLiquido)}</td>
+                      <td className="py-2 px-3 text-center">
+                        {salvo ? (
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
+                            salvo.status === 'fechado'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {salvo.status === 'fechado' ? <Lock size={12} /> : <Clock size={12} />}
+                            {salvo.status}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400">não salvo</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-slate-300 font-semibold text-slate-800">
+                  <td className="py-3 px-3">Total Geral (43 condomínios)</td>
+                  <td className="py-3 px-3 text-right">R$ {formatCurrency(condominios.reduce((acc, c) => acc + calcularValoresCondominio(c).receitaBruta, 0))}</td>
+                  <td className="py-3 px-3 text-right">R$ {formatCurrency(condominios.reduce((acc, c) => acc + calcularValoresCondominio(c).taxaAgesc, 0))}</td>
+                  <td className="py-3 px-3 text-right">R$ {formatCurrency(condominios.reduce((acc, c) => acc + calcularValoresCondominio(c).fundoReserva, 0))}</td>
+                  <td className="py-3 px-3 text-right">R$ {formatCurrency(condominios.reduce((acc, c) => acc + calcularValoresCondominio(c).deducoesContratos, 0))}</td>
+                  <td className="py-3 px-3 text-right">R$ {formatCurrency(condominios.reduce((acc, c) => acc + calcularValoresCondominio(c).restituicaoBoleto, 0))}</td>
+                  <td className="py-3 px-3 text-right text-blue-600">R$ {formatCurrency(condominios.reduce((acc, c) => acc + calcularValoresCondominio(c).valorLiquido, 0))}</td>
+                  <td className="py-3 px-3"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-slate-600">
-                <th className="py-2 px-3">Condomínio</th>
-                <th className="py-2 px-3 text-right">Receita Bruta</th>
-                <th className="py-2 px-3 text-right">Taxa AGESC</th>
-                <th className="py-2 px-3 text-right">Fundo Reserva</th>
-                <th className="py-2 px-3 text-right">Deduções</th>
-                <th className="py-2 px-3 text-right">Restituição</th>
-                <th className="py-2 px-3 text-right">Valor Líquido</th>
-                <th className="py-2 px-3 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {condominios.map(condo => {
-                const valores = calcularValoresCondominio(condo);
-                const salvo = fechamentoMap[condo.id];
-                return (
-                  <tr key={condo.id} className="border-b border-slate-100 hover:bg-slate-50">
-                    <td className="py-2 px-3 font-medium text-slate-700">{condo.nome}</td>
-                    <td className="py-2 px-3 text-right">R$ {formatCurrency(valores.receitaBruta)}</td>
-                    <td className="py-2 px-3 text-right text-red-600">R$ {formatCurrency(valores.taxaAgesc)}</td>
-                    <td className="py-2 px-3 text-right text-red-600">R$ {formatCurrency(valores.fundoReserva)}</td>
-                    <td className="py-2 px-3 text-right text-red-600">R$ {formatCurrency(valores.deducoesContratos)}</td>
-                    <td className="py-2 px-3 text-right text-green-600">R$ {formatCurrency(valores.restituicaoBoleto)}</td>
-                    <td className="py-2 px-3 text-right font-bold text-blue-600">R$ {formatCurrency(valores.valorLiquido)}</td>
-                    <td className="py-2 px-3 text-center">
-                      {salvo ? (
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${
-                          salvo.status === 'fechado'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-amber-100 text-amber-700'
-                        }`}>
-                          {salvo.status === 'fechado' ? <Lock size={12} /> : <Clock size={12} />}
-                          {salvo.status}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-slate-400">não salvo</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr className="border-t-2 border-slate-300 font-semibold text-slate-800">
-                <td className="py-3 px-3">Total Geral (43 condomínios)</td>
-                <td className="py-3 px-3 text-right">R$ {formatCurrency(condominios.reduce((acc, c) => acc + calcularValoresCondominio(c).receitaBruta, 0))}</td>
-                <td className="py-3 px-3 text-right">R$ {formatCurrency(condominios.reduce((acc, c) => acc + calcularValoresCondominio(c).taxaAgesc, 0))}</td>
-                <td className="py-3 px-3 text-right">R$ {formatCurrency(condominios.reduce((acc, c) => acc + calcularValoresCondominio(c).fundoReserva, 0))}</td>
-                <td className="py-3 px-3 text-right">R$ {formatCurrency(condominios.reduce((acc, c) => acc + calcularValoresCondominio(c).deducoesContratos, 0))}</td>
-                <td className="py-3 px-3 text-right">R$ {formatCurrency(condominios.reduce((acc, c) => acc + calcularValoresCondominio(c).restituicaoBoleto, 0))}</td>
-                <td className="py-3 px-3 text-right text-blue-600">R$ {formatCurrency(condominios.reduce((acc, c) => acc + calcularValoresCondominio(c).valorLiquido, 0))}</td>
-                <td className="py-3 px-3"></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        {renderHistorico()}
       </div>
-
-      {renderHistorico()}
-    </div>
-  );
+    );
+  };
 
   // Histórico de Fechamentos
   const renderHistorico = () => (
@@ -704,204 +726,226 @@ const App = () => {
   );
 
   // Renderização de Contratos
-  const renderContratos = () => (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800">Contratos Avançados</h2>
-          <p className="text-slate-500">Gestão de contratos e rateios por condomínio</p>
+  const renderContratos = () => {
+    if (loading) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+          <Database size={40} className="mb-2" />
+          <p>Carregando contratos...</p>
         </div>
-        <button
-          onClick={resetContractForm}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          <Plus size={18} />
-          Novo Contrato
-        </button>
-      </div>
+      );
+    }
 
-      <div className="grid grid-cols-1 gap-4">
-        {contratos.map(contrato => (
-          <div key={contrato.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="font-semibold text-slate-800">{contrato.empresa_contratada}</h3>
-                <p className="text-sm text-slate-500">
-                  Contrato: {contrato.numero_contrato || 'N/I'} | Valor: R$ {formatCurrency(contrato.valor_mensal)}
-                </p>
-                {contrato.tem_aditivo && (
-                  <p className="text-sm text-amber-600 mt-1">
-                    Aditivo: {contrato.aditivo_descricao} — R$ {formatCurrency(contrato.aditivo_valor)}
-                  </p>
-                )}
-                <div className="flex gap-2 mt-2">
-                  {contrato.link_pdf && (
-                    <a href={contrato.link_pdf} target="_blank" rel="noreferrer"
-                      className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
-                      <ExternalLink size={14} /> Ver PDF
-                    </a>
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">Contratos Avançados</h2>
+            <p className="text-slate-500">Gestão de contratos e rateios por condomínio</p>
+          </div>
+          <button
+            onClick={resetContractForm}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <Plus size={18} />
+            Novo Contrato
+          </button>
+        </div>
+
+        {contratos.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+            <FileText size={40} className="mb-2" />
+            <p>Nenhum contrato cadastrado. Clique em "Novo Contrato" para começar.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            {contratos.map(contrato => (
+              <div key={contrato.id} className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-semibold text-slate-800">{contrato.empresa_contratada}</h3>
+                    <p className="text-sm text-slate-500">
+                      Contrato: {contrato.numero_contrato || 'N/I'} | Valor: R$ {formatCurrency(contrato.valor_mensal)}
+                    </p>
+                    {contrato.tem_aditivo && (
+                      <p className="text-sm text-amber-600 mt-1">
+                        Aditivo: {contrato.aditivo_descricao} — R$ {formatCurrency(contrato.aditivo_valor)}
+                      </p>
+                    )}
+                    <div className="flex gap-2 mt-2">
+                      {contrato.link_pdf && (
+                        <a href={contrato.link_pdf} target="_blank" rel="noreferrer"
+                          className="flex items-center gap-1 text-xs text-blue-600 hover:underline">
+                          <ExternalLink size={14} /> Ver PDF
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleEditContract(contrato)}
+                      className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                      <Edit3 size={18} />
+                    </button>
+                    <button onClick={() => handleDeleteContract(contrato.id)}
+                      className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {isEditingContract && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-slate-800">
+                  {currentContract.id ? 'Editar Contrato' : 'Novo Contrato'}
+                </h3>
+                <button onClick={() => setIsEditingContract(false)} className="text-slate-400 hover:text-slate-600">
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleContractSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Empresa Contratada</label>
+                    <input type="text" required
+                      value={currentContract.empresa_contratada}
+                      onChange={(e) => setCurrentContract({ ...currentContract, empresa_contratada: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Número do Contrato</label>
+                    <input type="text"
+                      value={currentContract.numero_contrato}
+                      onChange={(e) => setCurrentContract({ ...currentContract, numero_contrato: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Valor Mensal (R$)</label>
+                    <input type="number" step="0.01" required
+                      value={currentContract.valor_mensal}
+                      onChange={(e) => setCurrentContract({ ...currentContract, valor_mensal: Number(e.target.value) })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div className="flex items-center gap-2 pt-6">
+                    <input type="checkbox" id="tem_aditivo"
+                      checked={currentContract.tem_aditivo}
+                      onChange={(e) => setCurrentContract({ ...currentContract, tem_aditivo: e.target.checked })} />
+                    <label htmlFor="tem_aditivo" className="text-sm font-medium text-slate-600">Possui Aditivo</label>
+                  </div>
+                  {currentContract.tem_aditivo && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-600 mb-1">Valor do Aditivo (R$)</label>
+                        <input type="number" step="0.01"
+                          value={currentContract.aditivo_valor}
+                          onChange={(e) => setCurrentContract({ ...currentContract, aditivo_valor: Number(e.target.value) })}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-600 mb-1">Descrição do Aditivo</label>
+                        <input type="text"
+                          value={currentContract.aditivo_descricao}
+                          onChange={(e) => setCurrentContract({ ...currentContract, aditivo_descricao: e.target.value })}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      </div>
+                    </>
+                  )}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Prazo Início</label>
+                    <input type="date"
+                      value={currentContract.prazo_inicio || ''}
+                      onChange={(e) => setCurrentContract({ ...currentContract, prazo_inicio: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Prazo Fim</label>
+                    <input type="date"
+                      value={currentContract.prazo_fim || ''}
+                      onChange={(e) => setCurrentContract({ ...currentContract, prazo_fim: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-600 mb-1">Link PDF</label>
+                    <input type="text"
+                      value={currentContract.link_pdf || ''}
+                      onChange={(e) => setCurrentContract({ ...currentContract, link_pdf: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-200 pt-4 space-y-3">
+                  <p className="font-medium text-slate-700">Tipo de Rateio</p>
+                  <div className="flex flex-wrap gap-4">
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="radio" checked={isAgescOnly} onChange={() => { setIsAgescOnly(true); setIsAllCondos(false); }} />
+                      Apenas AGESC
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="radio" checked={isAllCondos} onChange={() => { setIsAllCondos(true); setIsAgescOnly(false); }} />
+                      Todos os 43 condomínios (Global - rateio igualitário)
+                    </label>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input type="radio" checked={!isAgescOnly && !isAllCondos} onChange={() => { setIsAgescOnly(false); setIsAllCondos(false); }} />
+                      Selecionar condomínios específicos
+                    </label>
+                  </div>
+
+                  {!isAgescOnly && !isAllCondos && (
+                    <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg p-3">
+                      {condominios.length === 0 ? (
+                        <p className="text-sm text-slate-400 text-center py-4">Nenhum condomínio disponível</p>
+                      ) : (
+                        condominios.map(condo => (
+                          <div key={condo.id} className="flex items-center justify-between py-1">
+                            <label className="flex items-center gap-2 text-sm">
+                              <input type="checkbox"
+                                checked={selectedCondosForContract[condo.id]?.selected || false}
+                                onChange={(e) => setSelectedCondosForContract({
+                                  ...selectedCondosForContract,
+                                  [condo.id]: { selected: e.target.checked, valor: selectedCondosForContract[condo.id]?.valor || 0 }
+                                })} />
+                              {condo.nome}
+                            </label>
+                            {selectedCondosForContract[condo.id]?.selected && (
+                              <input type="number" step="0.01" placeholder="Valor"
+                                value={selectedCondosForContract[condo.id]?.valor || 0}
+                                onChange={(e) => setSelectedCondosForContract({
+                                  ...selectedCondosForContract,
+                                  [condo.id]: { selected: true, valor: Number(e.target.value) }
+                                })}
+                                className="w-28 px-2 py-1 text-sm border border-slate-200 rounded" />
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
                   )}
                 </div>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => handleEditContract(contrato)}
-                  className="p-2 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                  <Edit3 size={18} />
-                </button>
-                <button onClick={() => handleDeleteContract(contrato.id)}
-                  className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                  <Trash2 size={18} />
-                </button>
-              </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                  <button type="button" onClick={() => setIsEditingContract(false)}
+                    className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                    Cancelar
+                  </button>
+                  <button type="submit" disabled={loading}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 transition-colors">
+                    <Save size={18} />
+                    {loading ? 'Salvando...' : 'Salvar Contrato'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
-        ))}
+        )}
       </div>
-
-      {isEditingContract && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-slate-800">
-                {currentContract.id ? 'Editar Contrato' : 'Novo Contrato'}
-              </h3>
-              <button onClick={() => setIsEditingContract(false)} className="text-slate-400 hover:text-slate-600">
-                ✕
-              </button>
-            </div>
-
-            <form onSubmit={handleContractSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-600 mb-1">Empresa Contratada</label>
-                  <input type="text" required
-                    value={currentContract.empresa_contratada}
-                    onChange={(e) => setCurrentContract({ ...currentContract, empresa_contratada: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-600 mb-1">Número do Contrato</label>
-                  <input type="text"
-                    value={currentContract.numero_contrato}
-                    onChange={(e) => setCurrentContract({ ...currentContract, numero_contrato: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-600 mb-1">Valor Mensal (R$)</label>
-                  <input type="number" step="0.01" required
-                    value={currentContract.valor_mensal}
-                    onChange={(e) => setCurrentContract({ ...currentContract, valor_mensal: Number(e.target.value) })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div className="flex items-center gap-2 pt-6">
-                  <input type="checkbox" id="tem_aditivo"
-                    checked={currentContract.tem_aditivo}
-                    onChange={(e) => setCurrentContract({ ...currentContract, tem_aditivo: e.target.checked })} />
-                  <label htmlFor="tem_aditivo" className="text-sm font-medium text-slate-600">Possui Aditivo</label>
-                </div>
-                {currentContract.tem_aditivo && (
-                  <>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-600 mb-1">Valor do Aditivo (R$)</label>
-                      <input type="number" step="0.01"
-                        value={currentContract.aditivo_valor}
-                        onChange={(e) => setCurrentContract({ ...currentContract, aditivo_valor: Number(e.target.value) })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-600 mb-1">Descrição do Aditivo</label>
-                      <input type="text"
-                        value={currentContract.aditivo_descricao}
-                        onChange={(e) => setCurrentContract({ ...currentContract, aditivo_descricao: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  </>
-                )}
-                <div>
-                  <label className="block text-sm font-medium text-slate-600 mb-1">Prazo Início</label>
-                  <input type="date"
-                    value={currentContract.prazo_inicio || ''}
-                    onChange={(e) => setCurrentContract({ ...currentContract, prazo_inicio: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-600 mb-1">Prazo Fim</label>
-                  <input type="date"
-                    value={currentContract.prazo_fim || ''}
-                    onChange={(e) => setCurrentContract({ ...currentContract, prazo_fim: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-600 mb-1">Link PDF</label>
-                  <input type="text"
-                    value={currentContract.link_pdf || ''}
-                    onChange={(e) => setCurrentContract({ ...currentContract, link_pdf: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                </div>
-              </div>
-
-              <div className="border-t border-slate-200 pt-4 space-y-3">
-                <p className="font-medium text-slate-700">Tipo de Rateio</p>
-                <div className="flex flex-wrap gap-4">
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="radio" checked={isAgescOnly} onChange={() => { setIsAgescOnly(true); setIsAllCondos(false); }} />
-                    Apenas AGESC
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="radio" checked={isAllCondos} onChange={() => { setIsAllCondos(true); setIsAgescOnly(false); }} />
-                    Todos os 43 condomínios (rateio igualitário)
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="radio" checked={!isAgescOnly && !isAllCondos} onChange={() => { setIsAgescOnly(false); setIsAllCondos(false); }} />
-                    Selecionar condomínios específicos
-                  </label>
-                </div>
-
-                {!isAgescOnly && !isAllCondos && (
-                  <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg p-3">
-                    {condominios.map(condo => (
-                      <div key={condo.id} className="flex items-center justify-between py-1">
-                        <label className="flex items-center gap-2 text-sm">
-                          <input type="checkbox"
-                            checked={selectedCondosForContract[condo.id]?.selected || false}
-                            onChange={(e) => setSelectedCondosForContract({
-                              ...selectedCondosForContract,
-                              [condo.id]: { selected: e.target.checked, valor: selectedCondosForContract[condo.id]?.valor || 0 }
-                            })} />
-                          {condo.nome}
-                        </label>
-                        {selectedCondosForContract[condo.id]?.selected && (
-                          <input type="number" step="0.01" placeholder="Valor"
-                            value={selectedCondosForContract[condo.id]?.valor || 0}
-                            onChange={(e) => setSelectedCondosForContract({
-                              ...selectedCondosForContract,
-                              [condo.id]: { selected: true, valor: Number(e.target.value) }
-                            })}
-                            className="w-28 px-2 py-1 text-sm border border-slate-200 rounded" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-                <button type="button" onClick={() => setIsEditingContract(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-                  Cancelar
-                </button>
-                <button type="submit" disabled={loading}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 transition-colors">
-                  <Save size={18} />
-                  {loading ? 'Salvando...' : 'Salvar Contrato'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    );
+  };
 
   // Modal de Detalhes do Condomínio (com scroll)
   const renderCondoModal = () => {

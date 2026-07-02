@@ -588,7 +588,7 @@ export default function App() {
               <h2 className="text-xl font-black flex items-center gap-2"><Building2 /> {selectedCondo.nome}</h2>
               <button onClick={() => setSelectedCondo(null)} className="p-2 hover:bg-white/10 rounded-full"><X /></button>
             </div>
-            <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto">
+            <div className="p-8 pb-10 grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 overflow-y-auto custom-scrollbar">
               <div><p className="text-[10px] font-black text-slate-400 uppercase">CNPJ</p><p className="font-bold">{selectedCondo.cnpj || '—'}</p></div>
               <div><p className="text-[10px] font-black text-slate-400 uppercase">Endereço</p><p className="font-bold">{selectedCondo.endereco || '—'}</p></div>
               <div><p className="text-[10px] font-black text-slate-400 uppercase">Dados Bancários</p><p className="font-bold">{selectedCondo.dados_bancarios || '—'}</p></div>

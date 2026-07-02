@@ -4,10 +4,10 @@ import {
   Layout, Users, FileText, PieChart, Plus, Search,
   Building2, DollarSign, Calendar, CheckCircle2, AlertCircle,
   Info, ArrowRight, Save, Trash2, Edit3, ExternalLink,
-  Lock, History, Archive, Clock, Database, Zap
+  Lock, History, Archive, Clock, Database, Zap, Settings
 } from 'lucide-react';
 
-// Configuração Supabase — chaves fixas
+// Configuração Supabase — chaves fixas do arquivo TXT
 const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -156,6 +156,8 @@ const App = () => {
   }, [rateios]);
 
   // Cálculo consolidado por condomínio (usado em Dashboard e Fechamento)
+  // Regra: Valor Líquido = Receita Bruta - Taxa AGESC (4,5%) - Deduções Contratos + R$ 3,00 (Boleto)
+  // Fundo de Reserva (5%) é apenas exibido como 'Incluso', sem subtrair do líquido.
   const calcularValoresCondominio = useCallback((condo) => {
     if (!condo || loading) {
       return {
@@ -174,7 +176,7 @@ const App = () => {
     const fundoReserva = receitaBruta * 0.05;
     const deducoesContratos = getDeducoesPorCondominio(condo.id, condo.nome);
     const restituicaoBoleto = Number(condo.qtd_civis || 0) * 3;
-    const valorLiquido = receitaBruta - taxaAgesc - fundoReserva - deducoesContratos + restituicaoBoleto;
+    const valorLiquido = receitaBruta - taxaAgesc - deducoesContratos + restituicaoBoleto;
     const totalUnidades = Number(condo.qtd_pnr || 0) + Number(condo.qtd_civis || 0);
     const taxaUnitaria = totalUnidades > 0 ? receitaBruta / totalUnidades : 0;
 
@@ -352,7 +354,7 @@ const App = () => {
     setIsEditingContract(true);
   };
 
-  // Renderização do Dashboard
+  // Renderização do Dashboard — cards com boxes coloridos
   const renderDashboard = () => {
     if (loading || condominios.length === 0) {
       return (
@@ -437,9 +439,9 @@ const App = () => {
                         <span>Taxa AGESC (4.5%)</span>
                         <span>- R$ {formatCurrency(valores.taxaAgesc)}</span>
                       </div>
-                      <div className="flex justify-between text-red-600">
+                      <div className="flex justify-between text-slate-500">
                         <span>Fundo Reserva (5%)</span>
-                        <span>- R$ {formatCurrency(valores.fundoReserva)}</span>
+                        <span className="font-medium text-slate-600">Incluso</span>
                       </div>
                       <div className="flex justify-between text-red-600">
                         <span>Dedução Contratos</span>
@@ -459,6 +461,85 @@ const App = () => {
                 </div>
               );
             })}
+        </div>
+      </div>
+    );
+  };
+
+  // Renderização da aba Gerenciar
+  const renderGerenciar = () => {
+    if (loading || condominios.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+          <Database size={40} className="mb-2" />
+          <p>Carregando dados ou nenhum condomínio encontrado...</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800">Gerenciar Condomínios</h2>
+            <p className="text-slate-500">Cadastro e fichas técnicas dos 43 condomínios</p>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+            <input
+              type="text"
+              placeholder="Buscar condomínio..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto bg-white rounded-xl shadow-sm border border-slate-200">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-slate-600">
+                <th className="py-3 px-4">Condomínio</th>
+                <th className="py-3 px-4 text-center">PNR</th>
+                <th className="py-3 px-4 text-center">Civis</th>
+                <th className="py-3 px-4 text-right">Despesa Estimada</th>
+                <th className="py-3 px-4 text-right">Fundo Reserva</th>
+                <th className="py-3 px-4 text-center">Elevadores</th>
+                <th className="py-3 px-4 text-center">Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              {condominios
+                .filter(c => c && c.nome && c.nome.toLowerCase().includes(searchTerm.toLowerCase()))
+                .map(condo => (
+                  <tr key={condo.id} className="border-b border-slate-100 hover:bg-slate-50">
+                    <td className="py-3 px-4 font-medium text-slate-700">{condo.nome}</td>
+                    <td className="py-3 px-4 text-center">{condo.qtd_pnr || 0}</td>
+                    <td className="py-3 px-4 text-center">{condo.qtd_civis || 0}</td>
+                    <td className="py-3 px-4 text-right">R$ {formatCurrency(condo.despesa_estimada)}</td>
+                    <td className="py-3 px-4 text-right">R$ {formatCurrency(condo.saldo_fundo_reserva)}</td>
+                    <td className="py-3 px-4 text-center">
+                      {condo.possui_elevadores ? (
+                        <span className="inline-flex items-center gap-1 text-xs text-blue-700 bg-blue-100 px-2 py-1 rounded">
+                          {condo.qtd_elevadores || 0} un.
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <button
+                        onClick={() => setSelectedCondo(condo)}
+                        className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                      >
+                        <Info size={14} /> Detalhes
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
         </div>
       </div>
     );
@@ -584,7 +665,7 @@ const App = () => {
                       <td className="py-2 px-3 font-medium text-slate-700">{condo.nome}</td>
                       <td className="py-2 px-3 text-right">R$ {formatCurrency(valores.receitaBruta)}</td>
                       <td className="py-2 px-3 text-right text-red-600">R$ {formatCurrency(valores.taxaAgesc)}</td>
-                      <td className="py-2 px-3 text-right text-red-600">R$ {formatCurrency(valores.fundoReserva)}</td>
+                      <td className="py-2 px-3 text-right text-slate-500">R$ {formatCurrency(valores.fundoReserva)}</td>
                       <td className="py-2 px-3 text-right text-red-600">R$ {formatCurrency(valores.deducoesContratos)}</td>
                       <td className="py-2 px-3 text-right text-green-600">R$ {formatCurrency(valores.restituicaoBoleto)}</td>
                       <td className="py-2 px-3 text-right font-bold text-blue-600">R$ {formatCurrency(valores.valorLiquido)}</td>
@@ -690,7 +771,7 @@ const App = () => {
                   </td>
                   <td className="py-2 px-3 text-right">R$ {formatCurrency(f.receita_bruta)}</td>
                   <td className="py-2 px-3 text-right text-red-600">R$ {formatCurrency(f.taxa_agesc)}</td>
-                  <td className="py-2 px-3 text-right text-red-600">R$ {formatCurrency(f.fundo_reserva)}</td>
+                  <td className="py-2 px-3 text-right text-slate-500">R$ {formatCurrency(f.fundo_reserva)}</td>
                   <td className="py-2 px-3 text-right text-red-600">R$ {formatCurrency(f.deducoes_contratos)}</td>
                   <td className="py-2 px-3 text-right text-green-600">R$ {formatCurrency(f.restituicao_boleto)}</td>
                   <td className="py-2 px-3 text-right font-bold text-blue-600">R$ {formatCurrency(f.valor_liquido)}</td>
@@ -947,7 +1028,7 @@ const App = () => {
     );
   };
 
-  // Modal de Detalhes do Condomínio (com scroll)
+  // Modal de Detalhes do Condomínio (com scroll vertical)
   const renderCondoModal = () => {
     if (!selectedCondo) return null;
     const valores = calcularValoresCondominio(selectedCondo);
@@ -994,7 +1075,7 @@ const App = () => {
               <div className="bg-blue-50 p-4 rounded-lg space-y-1 text-sm">
                 <div className="flex justify-between"><span>Receita Bruta</span><span>R$ {formatCurrency(valores.receitaBruta)}</span></div>
                 <div className="flex justify-between text-red-600"><span>Taxa AGESC</span><span>- R$ {formatCurrency(valores.taxaAgesc)}</span></div>
-                <div className="flex justify-between text-red-600"><span>Fundo Reserva</span><span>- R$ {formatCurrency(valores.fundoReserva)}</span></div>
+                <div className="flex justify-between text-slate-500"><span>Fundo Reserva (5%)</span><span className="font-medium text-slate-600">Incluso</span></div>
                 <div className="flex justify-between text-red-600"><span>Deduções</span><span>- R$ {formatCurrency(valores.deducoesContratos)}</span></div>
                 <div className="flex justify-between text-green-600"><span>Restituição</span><span>+ R$ {formatCurrency(valores.restituicaoBoleto)}</span></div>
                 <div className="flex justify-between font-bold border-t border-blue-200 pt-1 mt-1"><span>Líquido</span><span>R$ {formatCurrency(valores.valorLiquido)}</span></div>
@@ -1027,6 +1108,7 @@ const App = () => {
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: PieChart },
+    { id: 'gerenciar', label: 'Gerenciar', icon: Settings },
     { id: 'contratos', label: 'Contratos', icon: FileText },
     { id: 'fechamento', label: 'Fechamento', icon: Calendar }
   ];
@@ -1080,6 +1162,7 @@ const App = () => {
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         {activeTab === 'dashboard' && renderDashboard()}
+        {activeTab === 'gerenciar' && renderGerenciar()}
         {activeTab === 'contratos' && renderContratos()}
         {activeTab === 'fechamento' && renderFechamento()}
         {selectedCondo && renderCondoModal()}

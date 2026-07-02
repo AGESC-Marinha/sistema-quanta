@@ -53,7 +53,11 @@ const emptyContract = () => ({
   valorTotal: '',
   dataInicio: '',
   dataFim: '',
+  linkPdf: '',
   condominios: {}, // { nome: valorFixo }
+  temAditivo: false,
+  aditivoDescricao: '',
+  aditivoValor: '',
   aditivos: [],
   parentId: null,
   isAditivo: false,
@@ -82,8 +86,10 @@ const fetchContratos = async () => {
   try {
     const { data, error } = await supabase
       .from('contratos')
-      .select('*')
-      .order('numero', { ascending: true });
+      .select(
+        'id, numero_contrato, empresa_contratada, valor_mensal, tem_aditivo, aditivo_descricao, aditivo_valor, prazo_inicio, prazo_fim, link_pdf'
+      )
+      .order('numero_contrato', { ascending: true });
     if (error) throw error;
     return data || [];
   } catch (err) {
@@ -106,12 +112,75 @@ const fetchRateios = async () => {
 };
 
 /* ------------------------------------------------------------------ */
+/* Persistência no Supabase                                           */
+/* ------------------------------------------------------------------ */
+const mapContratoToSupabase = (c) => ({
+  numero_contrato: c.numero || '',
+  empresa_contratada: c.fornecedor || '',
+  valor_mensal: parseNumber(c.valorTotal),
+  tem_aditivo: !!c.temAditivo,
+  aditivo_descricao: c.aditivoDescricao || '',
+  aditivo_valor: parseNumber(c.aditivoValor),
+  prazo_inicio: c.dataInicio || null,
+  prazo_fim: c.dataFim || null,
+  link_pdf: c.linkPdf || ''
+});
+
+const mapSupabaseToContrato = (row, rateios) => {
+  const condominios = {};
+  rateios
+    .filter((r) => String(r.contrato_id) === String(row.id))
+    .forEach((r) => { condominios[r.condominio] = r.valor; });
+  return {
+    ...emptyContract(),
+    id: row.id,
+    numero: row.numero_contrato || '',
+    fornecedor: row.empresa_contratada || '',
+    valorTotal: row.valor_mensal ?? '',
+    temAditivo: !!row.tem_aditivo,
+    aditivoDescricao: row.aditivo_descricao || '',
+    aditivoValor: row.aditivo_valor ?? '',
+    dataInicio: row.prazo_inicio || '',
+    dataFim: row.prazo_fim || '',
+    linkPdf: row.link_pdf || '',
+    condominios,
+    aditivos: []
+  };
+};
+
+const saveRateios = async (contratoId, condominios) => {
+  // Limpa rateios antigos
+  try {
+    await supabase.from('rateios').delete().eq('contrato_id', contratoId);
+  } catch (err) {
+    console.error('saveRateios delete:', err);
+  }
+
+  const rows = Object.entries(condominios || {})
+    .filter(([k]) => k !== 'Todos')
+    .map(([condominio, valor]) => ({
+      contrato_id: contratoId,
+      condominio,
+      valor: parseNumber(valor)
+    }));
+
+  if (!rows.length) return;
+  try {
+    const { error } = await supabase.from('rateios').insert(rows);
+    if (error) throw error;
+  } catch (err) {
+    console.error('saveRateios insert:', err);
+  }
+};
+
+/* ------------------------------------------------------------------ */
 /* Componente principal                                               */
 /* ------------------------------------------------------------------ */
 export default function App() {
   const [contracts, setContracts] = useState([]);
   const [condominiosList, setCondominiosList] = useState([...CONDOMINIOS_FALLBACK]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [view, setView] = useState('dashboard'); // dashboard | contracts
@@ -135,18 +204,7 @@ export default function App() {
   const loadContracts = useCallback(async () => {
     setLoading(true);
     const [contratos, rateios] = await Promise.all([fetchContratos(), fetchRateios()]);
-    const montados = contratos.map((c) => {
-      const condominios = {};
-      rateios
-        .filter((r) => String(r.contrato_id) === String(c.id))
-        .forEach((r) => { condominios[r.condominio] = r.valor; });
-      return {
-        ...emptyContract(),
-        ...c,
-        condominios,
-        aditivos: c.aditivos || []
-      };
-    });
+    const montados = contratos.map((c) => mapSupabaseToContrato(c, rateios));
     setContracts(montados);
     setLoading(false);
   }, []);
@@ -174,7 +232,6 @@ export default function App() {
     aditivo.objeto = `Aditivo: ${parent.objeto}`;
     aditivo.dataInicio = parent.dataInicio;
     aditivo.dataFim = parent.dataFim;
-    // Herança de condomínios e valores do contrato pai
     aditivo.condominios = JSON.parse(JSON.stringify(parent.condominios || {}));
     aditivo.valorTotal = parent.valorTotal;
     aditivo.boletoRestituicao = parent.boletoRestituicao;
@@ -188,7 +245,7 @@ export default function App() {
     setEditing(null);
   }, []);
 
-  const saveContract = useCallback(() => {
+  const saveContract = useCallback(async () => {
     if (!editing) return;
     if (!editing.numero || !editing.fornecedor) {
       alert('Preencha número e fornecedor.');
@@ -204,25 +261,70 @@ export default function App() {
       );
       if (!ok) return;
     }
-    setContracts((prev) => {
-      const exists = prev.find((c) => c.id === editing.id);
-      if (exists) {
-        return prev.map((c) => (c.id === editing.id ? editing : c));
-      }
-      if (editing.parentId) {
-        return prev.map((c) =>
-          c.id === editing.parentId
-            ? { ...c, aditivos: [...(c.aditivos || []), editing] }
-            : c
-        );
-      }
-      return [...prev, editing];
-    });
-    closeModal();
-  }, [editing, closeModal]);
 
-  const deleteContract = useCallback((id) => {
+    setSaving(true);
+    try {
+      const payload = mapContratoToSupabase(editing);
+      let savedId = editing.id;
+
+      // Verifica se já existe no banco (id numérico do supabase) ou é novo (uid local)
+      const isExisting = typeof editing.id === 'number' || (editing.id && contracts.find((c) => c.id === editing.id && typeof c.id === 'number'));
+
+      if (isExisting) {
+        const { data, error } = await supabase
+          .from('contratos')
+          .update(payload)
+          .eq('id', editing.id)
+          .select('id')
+          .single();
+        if (error) throw error;
+        savedId = data.id;
+        await saveRateios(savedId, editing.condominios);
+      } else {
+        const { data, error } = await supabase
+          .from('contratos')
+          .insert(payload)
+          .select('id')
+          .single();
+        if (error) throw error;
+        savedId = data.id;
+        await saveRateios(savedId, editing.condominios);
+      }
+
+      const saved = { ...editing, id: savedId };
+      setContracts((prev) => {
+        const exists = prev.find((c) => c.id === editing.id || c.id === savedId);
+        if (exists) {
+          return prev.map((c) => ((c.id === editing.id || c.id === savedId) ? saved : c));
+        }
+        if (editing.parentId) {
+          return prev.map((c) =>
+            c.id === editing.parentId
+              ? { ...c, aditivos: [...(c.aditivos || []), saved] }
+              : c
+          );
+        }
+        return [...prev, saved];
+      });
+      closeModal();
+    } catch (err) {
+      console.error('saveContract:', err);
+      alert('Erro ao salvar no Supabase: ' + (err?.message || err));
+    } finally {
+      setSaving(false);
+    }
+  }, [editing, closeModal, contracts]);
+
+  const deleteContract = useCallback(async (id) => {
     if (!confirm('Excluir este contrato?')) return;
+    try {
+      if (typeof id === 'number') {
+        await supabase.from('rateios').delete().eq('contrato_id', id);
+        await supabase.from('contratos').delete().eq('id', id);
+      }
+    } catch (err) {
+      console.error('deleteContract:', err);
+    }
     setContracts((prev) => prev.filter((c) => c.id !== id));
   }, []);
 
@@ -306,9 +408,9 @@ export default function App() {
     const s = search.toLowerCase();
     return contracts.filter(
       (c) =>
-        c.numero.toLowerCase().includes(s) ||
-        c.fornecedor.toLowerCase().includes(s) ||
-        c.objeto.toLowerCase().includes(s)
+        (c.numero || '').toLowerCase().includes(s) ||
+        (c.fornecedor || '').toLowerCase().includes(s) ||
+        (c.objeto || '').toLowerCase().includes(s)
     );
   }, [contracts, search]);
 
@@ -334,7 +436,7 @@ export default function App() {
             <label key={name} className="cond-item cond-item-extra">
               <input
                 type="checkbox"
-                checked={!!cond[name]}
+                checked={!!cond[name] || cond[name] === ''}
                 onChange={() => toggleCondominio(name)}
               />
               <span>{name}</span>
@@ -355,7 +457,7 @@ export default function App() {
             <label key={name} className="cond-item">
               <input
                 type="checkbox"
-                checked={!!cond[name]}
+                checked={!!cond[name] || cond[name] === ''}
                 onChange={() => toggleCondominio(name)}
               />
               <span className="cond-name">{name}</span>
@@ -427,6 +529,46 @@ export default function App() {
               </div>
             </div>
 
+            <div className="form-row">
+              <label>Link do PDF</label>
+              <input
+                value={editing.linkPdf}
+                onChange={(e) => updateField('linkPdf', e.target.value)}
+                placeholder="https://..."
+              />
+            </div>
+
+            <div className="form-row form-row-checkbox">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={!!editing.temAditivo}
+                  onChange={(e) => updateField('temAditivo', e.target.checked)}
+                />
+                Possui Aditivo
+              </label>
+            </div>
+
+            {editing.temAditivo && (
+              <div className="form-row form-row-2">
+                <div>
+                  <label>Descrição do Aditivo</label>
+                  <input
+                    value={editing.aditivoDescricao}
+                    onChange={(e) => updateField('aditivoDescricao', e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label>Valor do Aditivo (R$)</label>
+                  <input
+                    value={editing.aditivoValor}
+                    onChange={(e) => updateField('aditivoValor', e.target.value)}
+                    placeholder="0,00"
+                  />
+                </div>
+              </div>
+            )}
+
             {renderCondominioGrid()}
 
             <div className={`allocation-counter ${valorTotalNum > 0 && !alocacaoMatch ? 'allocation-alert' : ''}`}>
@@ -486,8 +628,10 @@ export default function App() {
           </div>
 
           <div className="modal-footer">
-            <button className="btn btn-secondary" onClick={closeModal}>Cancelar</button>
-            <button className="btn btn-primary" onClick={saveContract}>Salvar</button>
+            <button className="btn btn-secondary" onClick={closeModal} disabled={saving}>Cancelar</button>
+            <button className="btn btn-primary" onClick={saveContract} disabled={saving}>
+              {saving ? 'Salvando...' : 'Salvar'}
+            </button>
           </div>
         </div>
       </div>
@@ -571,6 +715,12 @@ export default function App() {
               <div><strong>Valor Total:</strong> {formatBRL(c.valorTotal)}</div>
               <div><strong>Vigência:</strong> {c.dataInicio || '—'} a {c.dataFim || '—'}</div>
               <div><strong>Condomínios:</strong> {Object.keys(c.condominios || {}).filter((k) => k !== 'Todos').length}</div>
+              {c.temAditivo && (
+                <div><strong>Aditivo:</strong> {c.aditivoDescricao || '—'} ({formatBRL(c.aditivoValor)})</div>
+              )}
+              {c.linkPdf && (
+                <div><strong>PDF:</strong> <a href={c.linkPdf} target="_blank" rel="noreferrer">Abrir</a></div>
+              )}
               {c.boletoRestituicao && (
                 <div><strong>Restituição Boleto:</strong> {formatBRL(parseNumber(c.valorRestituicao) + BOLETO_RESTITUICAO_TAXA)}</div>
               )}

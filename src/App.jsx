@@ -583,12 +583,12 @@ export default function App() {
 
       {selectedCondo && (
         <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSelectedCondo(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="bg-blue-900 p-6 text-white flex justify-between items-center">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-blue-900 p-6 text-white flex justify-between items-center shrink-0">
               <h2 className="text-xl font-black flex items-center gap-2"><Building2 /> {selectedCondo.nome}</h2>
               <button onClick={() => setSelectedCondo(null)} className="p-2 hover:bg-white/10 rounded-full"><X /></button>
             </div>
-            <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto">
               <div><p className="text-[10px] font-black text-slate-400 uppercase">CNPJ</p><p className="font-bold">{selectedCondo.cnpj || '—'}</p></div>
               <div><p className="text-[10px] font-black text-slate-400 uppercase">Endereço</p><p className="font-bold">{selectedCondo.endereco || '—'}</p></div>
               <div><p className="text-[10px] font-black text-slate-400 uppercase">Dados Bancários</p><p className="font-bold">{selectedCondo.dados_bancarios || '—'}</p></div>
@@ -640,7 +640,7 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <div className="p-6 bg-slate-50 flex justify-end"><button onClick={() => setSelectedCondo(null)} className="bg-blue-900 text-white px-8 py-3 rounded-xl font-black">FECHAR</button></div>
+            <div className="p-6 bg-slate-50 flex justify-end shrink-0"><button onClick={() => setSelectedCondo(null)} className="bg-blue-900 text-white px-8 py-3 rounded-xl font-black">FECHAR</button></div>
           </div>
         </div>
       )}

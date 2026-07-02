@@ -1,7 +1,18 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import './App.css';
 
-const CONDOMINIOS = [
+/* ------------------------------------------------------------------ */
+/* Supabase Client                                                     */
+/* ------------------------------------------------------------------ */
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://your-project.supabase.co';
+const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'your-anon-key';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+/* ------------------------------------------------------------------ */
+/* Constantes e helpers                                               */
+/* ------------------------------------------------------------------ */
+const CONDOMINIOS_FALLBACK = [
   'Residencial Aurora', 'Residencial Bom Jesus', 'Residencial Centro', 'Residencial Das Acácias',
   'Residencial Das Flores', 'Residencial Das Hortênsias', 'Residencial Das Palmeiras', 'Residencial Das Rosas',
   'Edifício Everest', 'Residencial Florença', 'Residencial Girassol', 'Residencial Horizonte',
@@ -17,7 +28,9 @@ const CONDOMINIOS = [
 
 const OPCOES_EXTRA = ['Todos', 'AGESC'];
 
-const TAXA_AGESC = 0.05; // 5% AGESC fee
+const TAXA_AGESC = 0.045; // 4,5% AGESC
+const TAXA_FUNDO_RESERVA = 0.05; // 5% (informativo)
+const BOLETO_RESTITUICAO_TAXA = 3.0; // + R$ 3,00
 
 const formatBRL = (value) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
@@ -48,12 +61,99 @@ const emptyContract = () => ({
   valorRestituicao: ''
 });
 
+/* ------------------------------------------------------------------ */
+/* Funções de busca no Supabase                                       */
+/* ------------------------------------------------------------------ */
+const fetchCondominios = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('condominios')
+      .select('id, nome')
+      .order('nome', { ascending: true });
+    if (error) throw error;
+    return (data || []).map((c) => c.nome);
+  } catch (err) {
+    console.error('fetchCondominios:', err);
+    return [...CONDOMINIOS_FALLBACK];
+  }
+};
+
+const fetchContratos = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('contratos')
+      .select('*')
+      .order('numero', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('fetchContratos:', err);
+    return [];
+  }
+};
+
+const fetchRateios = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('rateios')
+      .select('id, contrato_id, condominio, valor');
+    if (error) throw error;
+    return data || [];
+  } catch (err) {
+    console.error('fetchRateios:', err);
+    return [];
+  }
+};
+
+/* ------------------------------------------------------------------ */
+/* Componente principal                                               */
+/* ------------------------------------------------------------------ */
 export default function App() {
   const [contracts, setContracts] = useState([]);
+  const [condominiosList, setCondominiosList] = useState([...CONDOMINIOS_FALLBACK]);
+  const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [view, setView] = useState('dashboard'); // dashboard | contracts
   const [search, setSearch] = useState('');
+
+  /* Carrega condomínios ao montar */
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoading(true);
+      const list = await fetchCondominios();
+      if (active) {
+        setCondominiosList(list.length ? list : [...CONDOMINIOS_FALLBACK]);
+        setLoading(false);
+      }
+    })();
+    return () => { active = false; };
+  }, []);
+
+  /* Carrega contratos e rateios ao entrar na view de contratos */
+  const loadContracts = useCallback(async () => {
+    setLoading(true);
+    const [contratos, rateios] = await Promise.all([fetchContratos(), fetchRateios()]);
+    const montados = contratos.map((c) => {
+      const condominios = {};
+      rateios
+        .filter((r) => String(r.contrato_id) === String(c.id))
+        .forEach((r) => { condominios[r.condominio] = r.valor; });
+      return {
+        ...emptyContract(),
+        ...c,
+        condominios,
+        aditivos: c.aditivos || []
+      };
+    });
+    setContracts(montados);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (view === 'contracts') loadContracts();
+  }, [view, loadContracts]);
 
   const openNewContract = useCallback(() => {
     setEditing(emptyContract());
@@ -74,9 +174,11 @@ export default function App() {
     aditivo.objeto = `Aditivo: ${parent.objeto}`;
     aditivo.dataInicio = parent.dataInicio;
     aditivo.dataFim = parent.dataFim;
-    // Herança de condomínios e valores
+    // Herança de condomínios e valores do contrato pai
     aditivo.condominios = JSON.parse(JSON.stringify(parent.condominios || {}));
     aditivo.valorTotal = parent.valorTotal;
+    aditivo.boletoRestituicao = parent.boletoRestituicao;
+    aditivo.valorRestituicao = parent.valorRestituicao;
     setEditing(aditivo);
     setModalOpen(true);
   }, []);
@@ -92,7 +194,9 @@ export default function App() {
       alert('Preencha número e fornecedor.');
       return;
     }
-    const soma = Object.values(editing.condominios).reduce((a, b) => a + parseNumber(b), 0);
+    const soma = Object.entries(editing.condominios)
+      .filter(([k]) => k !== 'Todos')
+      .reduce((a, [, b]) => a + parseNumber(b), 0);
     const total = parseNumber(editing.valorTotal);
     if (total > 0 && Math.abs(soma - total) > 0.01) {
       const ok = confirm(
@@ -115,7 +219,7 @@ export default function App() {
       return [...prev, editing];
     });
     closeModal();
-  }, [editing, closeModal]););
+  }, [editing, closeModal]);
 
   const deleteContract = useCallback((id) => {
     if (!confirm('Excluir este contrato?')) return;
@@ -132,10 +236,10 @@ export default function App() {
       if (name === 'Todos') {
         if (cond['Todos']) {
           delete cond['Todos'];
-          CONDOMINIOS.forEach((c) => delete cond[c]);
+          condominiosList.forEach((c) => delete cond[c]);
         } else {
           cond['Todos'] = prev.valorTotal || '';
-          CONDOMINIOS.forEach((c) => {
+          condominiosList.forEach((c) => {
             if (!(c in cond)) cond[c] = '';
           });
         }
@@ -166,11 +270,17 @@ export default function App() {
 
   const valorTotalNum = useMemo(() => parseNumber(editing?.valorTotal), [editing]);
   const alocacaoMatch = Math.abs(somaAlocacoes - valorTotalNum) <= 0.01 && valorTotalNum > 0;
+  const diferencaAlocacao = somaAlocacoes - valorTotalNum;
+
+  const valorRestituicaoNum = useMemo(() => {
+    if (!editing?.boletoRestituicao) return 0;
+    return parseNumber(editing?.valorRestituicao) + BOLETO_RESTITUICAO_TAXA;
+  }, [editing]);
 
   // Dashboard: valor fixo alocado por condomínio subtraído do total
   const dashboard = useMemo(() => {
     const map = {};
-    CONDOMINIOS.forEach((c) => (map[c] = { alocado: 0, contratos: 0 }));
+    condominiosList.forEach((c) => (map[c] = { alocado: 0, contratos: 0 }));
     map['AGESC'] = { alocado: 0, contratos: 0 };
 
     const processContract = (c) => {
@@ -189,7 +299,7 @@ export default function App() {
     const totalContratos = contracts.reduce((a, c) => a + parseNumber(c.valorTotal), 0);
     const saldo = totalContratos - totalAlocado;
     return { map, totalAlocado, totalContratos, saldo };
-  }, [contracts]);
+  }, [contracts, condominiosList]);
 
   const filteredContracts = useMemo(() => {
     if (!search) return contracts;
@@ -241,7 +351,7 @@ export default function App() {
           ))}
         </div>
         <div className="cond-grid-list">
-          {CONDOMINIOS.map((name) => (
+          {condominiosList.map((name) => (
             <label key={name} className="cond-item">
               <input
                 type="checkbox"
@@ -269,7 +379,11 @@ export default function App() {
     if (!modalOpen || !editing) return null;
     return (
       <div className="modal-overlay" onClick={closeModal}>
-        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-content"
+          style={{ maxHeight: '90vh', overflowY: 'auto' }}
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="modal-header">
             <h2>{editing.isAditivo ? 'Termo Aditivo' : 'Novo Contrato'}</h2>
             <button className="modal-close" onClick={closeModal} aria-label="Fechar">×</button>
@@ -315,7 +429,7 @@ export default function App() {
 
             {renderCondominioGrid()}
 
-            <div className="allocation-counter">
+            <div className={`allocation-counter ${valorTotalNum > 0 && !alocacaoMatch ? 'allocation-alert' : ''}`}>
               <div className="counter-item">
                 <span className="counter-label">Soma das Alocações:</span>
                 <span className="counter-value">{formatBRL(somaAlocacoes)}</span>
@@ -330,7 +444,7 @@ export default function App() {
                     <span className="status-ok">OK ✓</span>
                   ) : (
                     <span className="status-diff">
-                      Diferença: {formatBRL(somaAlocacoes - valorTotalNum)}
+                      Diferença: {formatBRL(diferencaAlocacao)}
                     </span>
                   )
                 ) : (
@@ -357,8 +471,17 @@ export default function App() {
               )}
             </div>
 
+            {editing.boletoRestituicao && (
+              <div className="boleto-info">
+                Restituição de Boleto: {formatBRL(parseNumber(editing.valorRestituicao))} + R$ 3,00 (taxa) = {formatBRL(valorRestituicaoNum)}
+              </div>
+            )}
+
             <div className="agesc-info">
-              Taxa AGESC aplicada: {formatBRL(valorTotalNum * TAXA_AGESC)} ({(TAXA_AGESC * 100).toFixed(0)}%)
+              Taxa AGESC aplicada: {formatBRL(valorTotalNum * TAXA_AGESC)} ({(TAXA_AGESC * 100).toFixed(1)}%)
+            </div>
+            <div className="fundo-reserva-info">
+              Fundo de Reserva (informativo): {formatBRL(valorTotalNum * TAXA_FUNDO_RESERVA)} ({(TAXA_FUNDO_RESERVA * 100).toFixed(0)}%)
             </div>
           </div>
 
@@ -425,8 +548,10 @@ export default function App() {
         <button className="btn btn-primary" onClick={openNewContract}>+ Novo Contrato</button>
       </div>
 
+      {loading && <div className="empty-state">Carregando contratos...</div>}
+
       <div className="contracts-list">
-        {filteredContracts.length === 0 && (
+        {!loading && filteredContracts.length === 0 && (
           <div className="empty-state">Nenhum contrato cadastrado.</div>
         )}
         {filteredContracts.map((c) => (
@@ -447,7 +572,7 @@ export default function App() {
               <div><strong>Vigência:</strong> {c.dataInicio || '—'} a {c.dataFim || '—'}</div>
               <div><strong>Condomínios:</strong> {Object.keys(c.condominios || {}).filter((k) => k !== 'Todos').length}</div>
               {c.boletoRestituicao && (
-                <div><strong>Restituição Boleto:</strong> {formatBRL(c.valorRestituicao)}</div>
+                <div><strong>Restituição Boleto:</strong> {formatBRL(parseNumber(c.valorRestituicao) + BOLETO_RESTITUICAO_TAXA)}</div>
               )}
               {(c.aditivos || []).length > 0 && (
                 <div><strong>Aditivos:</strong> {c.aditivos.length}</div>

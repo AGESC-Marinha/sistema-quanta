@@ -1,18 +1,21 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import './App.css';
+import { 
+  Building2, MapPin, Users, DollarSign, Trash2, 
+  LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle,
+  CreditCard, Flame, ArrowUpCircle, ExternalLink, X,
+  FileText, Calendar, Percent, Link2, ChevronDown, ChevronRight, TrendingDown, Info, CheckCircle2
+} from 'lucide-react';
 
-/* ------------------------------------------------------------------ */
-/* Supabase Client                                                     */
-/* ------------------------------------------------------------------ */
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://your-project.supabase.co';
-const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'your-anon-key';
+const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-/* ------------------------------------------------------------------ */
-/* Constantes e helpers                                               */
-/* ------------------------------------------------------------------ */
-const CONDOMINIOS_FALLBACK = [
+const TAXA_AGESC_RATE = 0.045;
+const FUNDO_RESERVA_RATE = 0.05;
+const BOLETO_RESTITUICAO = 3.00;
+
+const CONDOMINIOS_LIST = [
   'Residencial Aurora', 'Residencial Bom Jesus', 'Residencial Centro', 'Residencial Das Acácias',
   'Residencial Das Flores', 'Residencial Das Hortênsias', 'Residencial Das Palmeiras', 'Residencial Das Rosas',
   'Edifício Everest', 'Residencial Florença', 'Residencial Girassol', 'Residencial Horizonte',
@@ -26,735 +29,261 @@ const CONDOMINIOS_FALLBACK = [
   'Residencial Serra Azul', 'Residencial Sol Nascente', 'Residencial Vale do Sol'
 ];
 
-const OPCOES_EXTRA = ['Todos', 'AGESC'];
-
-const TAXA_AGESC = 0.045; // 4,5% AGESC
-const TAXA_FUNDO_RESERVA = 0.05; // 5% (informativo)
-const BOLETO_RESTITUICAO_TAXA = 3.0; // + R$ 3,00
-
-const formatBRL = (value) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
-
-const parseNumber = (value) => {
-  if (typeof value === 'number') return value;
-  if (!value) return 0;
-  const cleaned = String(value).replace(/[^0-9,-]/g, '').replace(',', '.');
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? 0 : num;
+const INITIAL_CONTRACT = {
+  numero_contrato: '', empresa_contratada: '', valor_mensal: '',
+  tem_aditivo: false, aditivo_descricao: '', aditivo_valor: '',
+  prazo_inicio: '', prazo_fim: '', link_pdf: '',
+  alocacoes: {} // { 'Nome Condominio': valor }
 };
 
-const uid = () => Math.random().toString(36).slice(2, 10);
-
-const emptyContract = () => ({
-  id: uid(),
-  numero: '',
-  fornecedor: '',
-  objeto: '',
-  valorTotal: '',
-  dataInicio: '',
-  dataFim: '',
-  linkPdf: '',
-  condominios: {}, // { nome: valorFixo }
-  temAditivo: false,
-  aditivoDescricao: '',
-  aditivoValor: '',
-  aditivos: [],
-  parentId: null,
-  isAditivo: false,
-  boletoRestituicao: false,
-  valorRestituicao: ''
-});
-
-/* ------------------------------------------------------------------ */
-/* Funções de busca no Supabase                                       */
-/* ------------------------------------------------------------------ */
-const fetchCondominios = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('condominios')
-      .select('id, nome')
-      .order('nome', { ascending: true });
-    if (error) throw error;
-    return (data || []).map((c) => c.nome);
-  } catch (err) {
-    console.error('fetchCondominios:', err);
-    return [...CONDOMINIOS_FALLBACK];
-  }
-};
-
-const fetchContratos = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('contratos')
-      .select(
-        'id, numero_contrato, empresa_contratada, valor_mensal, tem_aditivo, aditivo_descricao, aditivo_valor, prazo_inicio, prazo_fim, link_pdf'
-      )
-      .order('numero_contrato', { ascending: true });
-    if (error) throw error;
-    return data || [];
-  } catch (err) {
-    console.error('fetchContratos:', err);
-    return [];
-  }
-};
-
-const fetchRateios = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('rateios')
-      .select('id, contrato_id, condominio, valor');
-    if (error) throw error;
-    return data || [];
-  } catch (err) {
-    console.error('fetchRateios:', err);
-    return [];
-  }
-};
-
-/* ------------------------------------------------------------------ */
-/* Persistência no Supabase                                           */
-/* ------------------------------------------------------------------ */
-const mapContratoToSupabase = (c) => ({
-  numero_contrato: c.numero || '',
-  empresa_contratada: c.fornecedor || '',
-  valor_mensal: parseNumber(c.valorTotal),
-  tem_aditivo: !!c.temAditivo,
-  aditivo_descricao: c.aditivoDescricao || '',
-  aditivo_valor: parseNumber(c.aditivoValor),
-  prazo_inicio: c.dataInicio || null,
-  prazo_fim: c.dataFim || null,
-  link_pdf: c.linkPdf || ''
-});
-
-const mapSupabaseToContrato = (row, rateios) => {
-  const condominios = {};
-  rateios
-    .filter((r) => String(r.contrato_id) === String(row.id))
-    .forEach((r) => { condominios[r.condominio] = r.valor; });
-  return {
-    ...emptyContract(),
-    id: row.id,
-    numero: row.numero_contrato || '',
-    fornecedor: row.empresa_contratada || '',
-    valorTotal: row.valor_mensal ?? '',
-    temAditivo: !!row.tem_aditivo,
-    aditivoDescricao: row.aditivo_descricao || '',
-    aditivoValor: row.aditivo_valor ?? '',
-    dataInicio: row.prazo_inicio || '',
-    dataFim: row.prazo_fim || '',
-    linkPdf: row.link_pdf || '',
-    condominios,
-    aditivos: []
-  };
-};
-
-const saveRateios = async (contratoId, condominios) => {
-  // Limpa rateios antigos
-  try {
-    await supabase.from('rateios').delete().eq('contrato_id', contratoId);
-  } catch (err) {
-    console.error('saveRateios delete:', err);
-  }
-
-  const rows = Object.entries(condominios || {})
-    .filter(([k]) => k !== 'Todos')
-    .map(([condominio, valor]) => ({
-      contrato_id: contratoId,
-      condominio,
-      valor: parseNumber(valor)
-    }));
-
-  if (!rows.length) return;
-  try {
-    const { error } = await supabase.from('rateios').insert(rows);
-    if (error) throw error;
-  } catch (err) {
-    console.error('saveRateios insert:', err);
-  }
-};
-
-/* ------------------------------------------------------------------ */
-/* Componente principal                                               */
-/* ------------------------------------------------------------------ */
 export default function App() {
-  const [contracts, setContracts] = useState([]);
-  const [condominiosList, setCondominiosList] = useState([...CONDOMINIOS_FALLBACK]);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [condominios, setCondominios] = useState([]);
+  const [contratos, setContratos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [view, setView] = useState('dashboard'); // dashboard | contracts
-  const [search, setSearch] = useState('');
+  const [selectedCondo, setSelectedCondo] = useState(null);
+  const [contractForm, setContractForm] = useState(INITIAL_CONTRACT);
+  const [editingId, setEditingId] = useState(null);
 
-  /* Carrega condomínios ao montar */
   useEffect(() => {
-    let active = true;
-    (async () => {
-      setLoading(true);
-      const list = await fetchCondominios();
-      if (active) {
-        setCondominiosList(list.length ? list : [...CONDOMINIOS_FALLBACK]);
-        setLoading(false);
-      }
-    })();
-    return () => { active = false; };
+    fetchData();
   }, []);
 
-  /* Carrega contratos e rateios ao entrar na view de contratos */
-  const loadContracts = useCallback(async () => {
+  async function fetchData() {
     setLoading(true);
-    const [contratos, rateios] = await Promise.all([fetchContratos(), fetchRateios()]);
-    const montados = contratos.map((c) => mapSupabaseToContrato(c, rateios));
-    setContracts(montados);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (view === 'contracts') loadContracts();
-  }, [view, loadContracts]);
-
-  const openNewContract = useCallback(() => {
-    setEditing(emptyContract());
-    setModalOpen(true);
-  }, []);
-
-  const openEditContract = useCallback((contract) => {
-    setEditing(JSON.parse(JSON.stringify(contract)));
-    setModalOpen(true);
-  }, []);
-
-  const openNewAditivo = useCallback((parent) => {
-    const aditivo = emptyContract();
-    aditivo.isAditivo = true;
-    aditivo.parentId = parent.id;
-    aditivo.numero = `${parent.numero}-ADT/${(parent.aditivos?.length || 0) + 1}`;
-    aditivo.fornecedor = parent.fornecedor;
-    aditivo.objeto = `Aditivo: ${parent.objeto}`;
-    aditivo.dataInicio = parent.dataInicio;
-    aditivo.dataFim = parent.dataFim;
-    aditivo.condominios = JSON.parse(JSON.stringify(parent.condominios || {}));
-    aditivo.valorTotal = parent.valorTotal;
-    aditivo.boletoRestituicao = parent.boletoRestituicao;
-    aditivo.valorRestituicao = parent.valorRestituicao;
-    setEditing(aditivo);
-    setModalOpen(true);
-  }, []);
-
-  const closeModal = useCallback(() => {
-    setModalOpen(false);
-    setEditing(null);
-  }, []);
-
-  const saveContract = useCallback(async () => {
-    if (!editing) return;
-    if (!editing.numero || !editing.fornecedor) {
-      alert('Preencha número e fornecedor.');
+    try {
+      const { data: cData } = await supabase.from('condominios').select('*').order('nome');
+      const { data: ctData } = await supabase.from('contratos').select('*').order('numero_contrato');
+      const { data: rData } = await supabase.from('rateios').select('*');
+      
+      setCondominios(cData || []);
+      
+      const contratosComAlocacao = (ctData || []).map(ct => {
+        const alocs = {};
+        (rData || []).filter(r => r.contrato_id === ct.id).forEach(r => {
+          alocs[r.condominio] = r.valor;
+        });
+        return { ...ct, alocacoes: alocs };
+      });
+      setContratos(contratosComAlocacao);
+    } catch (err) {
+      console.error('Erro ao carregar dados:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+    /* --- Lógica de Salvamento --- */
+  async function saveContract(e) {
+    e.preventDefault();
+    if (!contractForm.numero_contrato || !contractForm.empresa_contratada) {
+      alert('Por favor, preencha o número do contrato e a empresa.');
       return;
     }
-    const soma = Object.entries(editing.condominios)
-      .filter(([k]) => k !== 'Todos')
-      .reduce((a, [, b]) => a + parseNumber(b), 0);
-    const total = parseNumber(editing.valorTotal);
-    if (total > 0 && Math.abs(soma - total) > 0.01) {
-      const ok = confirm(
-        `A soma das alocações (${formatBRL(soma)}) não bate com o valor total (${formatBRL(total)}). Deseja salvar mesmo assim?`
-      );
-      if (!ok) return;
+
+    const somaAlocacoes = Object.values(contractForm.alocacoes).reduce((a, b) => a + (Number(b) || 0), 0);
+    const valorTotal = Number(contractForm.valor_mensal) || 0;
+
+    if (valorTotal > 0 && Math.abs(somaAlocacoes - valorTotal) > 0.01) {
+      const confirmSave = confirm(`A soma das alocações (R$ ${somaAlocacoes.toFixed(2)}) não bate com o valor total (R$ ${valorTotal.toFixed(2)}). Deseja salvar mesmo assim?`);
+      if (!confirmSave) return;
     }
 
     setSaving(true);
     try {
-      const payload = mapContratoToSupabase(editing);
-      let savedId = editing.id;
+      const payload = {
+        numero_contrato: contractForm.numero_contrato,
+        empresa_contratada: contractForm.empresa_contratada,
+        valor_mensal: valorTotal,
+        tem_aditivo: contractForm.tem_aditivo,
+        aditivo_descricao: contractForm.aditivo_descricao,
+        aditivo_valor: Number(contractForm.aditivo_valor) || 0,
+        prazo_inicio: contractForm.prazo_inicio || null,
+        prazo_fim: contractForm.prazo_fim || null,
+        link_pdf: contractForm.link_pdf
+      };
 
-      // Verifica se já existe no banco (id numérico do supabase) ou é novo (uid local)
-      const isExisting = typeof editing.id === 'number' || (editing.id && contracts.find((c) => c.id === editing.id && typeof c.id === 'number'));
+      let contratoId = editingId;
 
-      if (isExisting) {
-        const { data, error } = await supabase
-          .from('contratos')
-          .update(payload)
-          .eq('id', editing.id)
-          .select('id')
-          .single();
+      if (editingId) {
+        const { error } = await supabase.from('contratos').update(payload).eq('id', editingId);
         if (error) throw error;
-        savedId = data.id;
-        await saveRateios(savedId, editing.condominios);
       } else {
-        const { data, error } = await supabase
-          .from('contratos')
-          .insert(payload)
-          .select('id')
-          .single();
+        const { data, error } = await supabase.from('contratos').insert([payload]).select();
         if (error) throw error;
-        savedId = data.id;
-        await saveRateios(savedId, editing.condominios);
+        contratoId = data[0].id;
       }
 
-      const saved = { ...editing, id: savedId };
-      setContracts((prev) => {
-        const exists = prev.find((c) => c.id === editing.id || c.id === savedId);
-        if (exists) {
-          return prev.map((c) => ((c.id === editing.id || c.id === savedId) ? saved : c));
-        }
-        if (editing.parentId) {
-          return prev.map((c) =>
-            c.id === editing.parentId
-              ? { ...c, aditivos: [...(c.aditivos || []), saved] }
-              : c
-          );
-        }
-        return [...prev, saved];
-      });
-      closeModal();
+      // Salvar Alocações (Rateios)
+      await supabase.from('rateios').delete().eq('contrato_id', contratoId);
+      
+      const alocacoesRows = Object.entries(contractForm.alocacoes)
+        .filter(([_, valor]) => Number(valor) > 0)
+        .map(([condo, valor]) => ({
+          contrato_id: contratoId,
+          condominio: condo,
+          valor: Number(valor)
+        }));
+
+      if (alocacoesRows.length > 0) {
+        const { error: rError } = await supabase.from('rateios').insert(alocacoesRows);
+        if (rError) throw rError;
+      }
+
+      alert('Contrato e alocações salvos com sucesso!');
+      setEditingId(null);
+      setContractForm(INITIAL_CONTRACT);
+      fetchData();
+      setActiveTab('dashboard');
     } catch (err) {
-      console.error('saveContract:', err);
-      alert('Erro ao salvar no Supabase: ' + (err?.message || err));
+      console.error('Erro ao salvar:', err);
+      alert('Erro técnico ao salvar. Verifique o console (F12).');
     } finally {
       setSaving(false);
     }
-  }, [editing, closeModal, contracts]);
+  }
 
-  const deleteContract = useCallback(async (id) => {
-    if (!confirm('Excluir este contrato?')) return;
-    try {
-      if (typeof id === 'number') {
-        await supabase.from('rateios').delete().eq('contrato_id', id);
-        await supabase.from('contratos').delete().eq('id', id);
+  const handleToggleCondo = (name) => {
+    const newAlocs = { ...contractForm.alocacoes };
+    if (name === 'Todos') {
+      const isSelectingAll = !newAlocs['Todos'];
+      if (isSelectingAll) {
+        newAlocs['Todos'] = true;
+        CONDOMINIOS_LIST.forEach(c => { if (!newAlocs[c]) newAlocs[c] = ''; });
+      } else {
+        delete newAlocs['Todos'];
+        CONDOMINIOS_LIST.forEach(c => delete newAlocs[c]);
       }
-    } catch (err) {
-      console.error('deleteContract:', err);
+    } else {
+      if (newAlocs[name] !== undefined) delete newAlocs[name];
+      else newAlocs[name] = '';
     }
-    setContracts((prev) => prev.filter((c) => c.id !== id));
-  }, []);
-
-  const updateField = (field, value) => {
-    setEditing((prev) => ({ ...prev, [field]: value }));
+    setContractForm({ ...contractForm, alocacoes: newAlocs });
   };
 
-  const toggleCondominio = (name) => {
-    setEditing((prev) => {
-      const cond = { ...prev.condominios };
-      if (name === 'Todos') {
-        if (cond['Todos']) {
-          delete cond['Todos'];
-          condominiosList.forEach((c) => delete cond[c]);
-        } else {
-          cond['Todos'] = prev.valorTotal || '';
-          condominiosList.forEach((c) => {
-            if (!(c in cond)) cond[c] = '';
-          });
-        }
-        return { ...prev, condominios: cond };
-      }
-      if (cond[name]) {
-        delete cond[name];
-      } else {
-        cond[name] = '';
-      }
-      return { ...prev, condominios: cond };
+  const handleAlocacaoChange = (name, val) => {
+    setContractForm({
+      ...contractForm,
+      alocacoes: { ...contractForm.alocacoes, [name]: val }
     });
   };
 
-  const setCondominioValue = (name, value) => {
-    setEditing((prev) => ({
-      ...prev,
-      condominios: { ...prev.condominios, [name]: value }
-    }));
-  };
-
-  const somaAlocacoes = useMemo(() => {
-    if (!editing) return 0;
-    return Object.entries(editing.condominios)
-      .filter(([k]) => k !== 'Todos' && k !== 'AGESC')
-      .reduce((a, [, v]) => a + parseNumber(v), 0);
-  }, [editing]);
-
-  const valorTotalNum = useMemo(() => parseNumber(editing?.valorTotal), [editing]);
-  const alocacaoMatch = Math.abs(somaAlocacoes - valorTotalNum) <= 0.01 && valorTotalNum > 0;
-  const diferencaAlocacao = somaAlocacoes - valorTotalNum;
-
-  const valorRestituicaoNum = useMemo(() => {
-    if (!editing?.boletoRestituicao) return 0;
-    return parseNumber(editing?.valorRestituicao) + BOLETO_RESTITUICAO_TAXA;
-  }, [editing]);
-
-  // Dashboard: valor fixo alocado por condomínio subtraído do total
-  const dashboard = useMemo(() => {
-    const map = {};
-    condominiosList.forEach((c) => (map[c] = { alocado: 0, contratos: 0 }));
-    map['AGESC'] = { alocado: 0, contratos: 0 };
-
-    const processContract = (c) => {
-      Object.entries(c.condominios || {}).forEach(([name, val]) => {
-        if (name === 'Todos') return;
-        if (!map[name]) return;
-        const v = parseNumber(val);
-        map[name].alocado += v;
-        map[name].contratos += 1;
-      });
-      (c.aditivos || []).forEach(processContract);
-    };
-    contracts.forEach(processContract);
-
-    const totalAlocado = Object.values(map).reduce((a, b) => a + b.alocado, 0);
-    const totalContratos = contracts.reduce((a, c) => a + parseNumber(c.valorTotal), 0);
-    const saldo = totalContratos - totalAlocado;
-    return { map, totalAlocado, totalContratos, saldo };
-  }, [contracts, condominiosList]);
-
-  const filteredContracts = useMemo(() => {
-    if (!search) return contracts;
-    const s = search.toLowerCase();
-    return contracts.filter(
-      (c) =>
-        (c.numero || '').toLowerCase().includes(s) ||
-        (c.fornecedor || '').toLowerCase().includes(s) ||
-        (c.objeto || '').toLowerCase().includes(s)
-    );
-  }, [contracts, search]);
-
-  // Lock body scroll when modal open (correção de rolagem do modal)
-  useEffect(() => {
-    if (modalOpen) {
-      const original = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = original;
-      };
-    }
-  }, [modalOpen]);
-
-  const renderCondominioGrid = () => {
-    if (!editing) return null;
-    const cond = editing.condominios || {};
-    return (
-      <div className="cond-grid">
-        <div className="cond-section-title">Seleção de Condomínios</div>
-        <div className="cond-grid-options">
-          {OPCOES_EXTRA.map((name) => (
-            <label key={name} className="cond-item cond-item-extra">
-              <input
-                type="checkbox"
-                checked={!!cond[name] || cond[name] === ''}
-                onChange={() => toggleCondominio(name)}
-              />
-              <span>{name}</span>
-              {cond[name] !== undefined && name !== 'Todos' && (
-                <input
-                  type="text"
-                  className="cond-value-input"
-                  placeholder="R$ 0,00"
-                  value={cond[name]}
-                  onChange={(e) => setCondominioValue(name, e.target.value)}
-                />
-              )}
-            </label>
-          ))}
-        </div>
-        <div className="cond-grid-list">
-          {condominiosList.map((name) => (
-            <label key={name} className="cond-item">
-              <input
-                type="checkbox"
-                checked={!!cond[name] || cond[name] === ''}
-                onChange={() => toggleCondominio(name)}
-              />
-              <span className="cond-name">{name}</span>
-              {cond[name] !== undefined && (
-                <input
-                  type="text"
-                  className="cond-value-input"
-                  placeholder="R$ 0,00"
-                  value={cond[name]}
-                  onChange={(e) => setCondominioValue(name, e.target.value)}
-                />
-              )}
-            </label>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  const renderModal = () => {
-    if (!modalOpen || !editing) return null;
-    return (
-      <div className="modal-overlay" onClick={closeModal}>
-        <div
-          className="modal-content"
-          style={{ maxHeight: '90vh', overflowY: 'auto' }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="modal-header">
-            <h2>{editing.isAditivo ? 'Termo Aditivo' : 'Novo Contrato'}</h2>
-            <button className="modal-close" onClick={closeModal} aria-label="Fechar">×</button>
-          </div>
-
-          <div className="modal-body">
-            {editing.parentId && (
-              <div className="inheritance-banner">
-                Herdando dados do contrato pai. Condomínios e valores carregados automaticamente.
-              </div>
-            )}
-
-            <div className="form-row">
-              <label>Número</label>
-              <input value={editing.numero} onChange={(e) => updateField('numero', e.target.value)} />
-            </div>
-            <div className="form-row">
-              <label>Fornecedor</label>
-              <input value={editing.fornecedor} onChange={(e) => updateField('fornecedor', e.target.value)} />
-            </div>
-            <div className="form-row">
-              <label>Objeto</label>
-              <input value={editing.objeto} onChange={(e) => updateField('objeto', e.target.value)} />
-            </div>
-            <div className="form-row form-row-3">
-              <div>
-                <label>Valor Total (R$)</label>
-                <input
-                  value={editing.valorTotal}
-                  onChange={(e) => updateField('valorTotal', e.target.value)}
-                  placeholder="0,00"
-                />
-              </div>
-              <div>
-                <label>Data Início</label>
-                <input type="date" value={editing.dataInicio} onChange={(e) => updateField('dataInicio', e.target.value)} />
-              </div>
-              <div>
-                <label>Data Fim</label>
-                <input type="date" value={editing.dataFim} onChange={(e) => updateField('dataFim', e.target.value)} />
-              </div>
-            </div>
-
-            <div className="form-row">
-              <label>Link do PDF</label>
-              <input
-                value={editing.linkPdf}
-                onChange={(e) => updateField('linkPdf', e.target.value)}
-                placeholder="https://..."
-              />
-            </div>
-
-            <div className="form-row form-row-checkbox">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={!!editing.temAditivo}
-                  onChange={(e) => updateField('temAditivo', e.target.checked)}
-                />
-                Possui Aditivo
-              </label>
-            </div>
-
-            {editing.temAditivo && (
-              <div className="form-row form-row-2">
-                <div>
-                  <label>Descrição do Aditivo</label>
-                  <input
-                    value={editing.aditivoDescricao}
-                    onChange={(e) => updateField('aditivoDescricao', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label>Valor do Aditivo (R$)</label>
-                  <input
-                    value={editing.aditivoValor}
-                    onChange={(e) => updateField('aditivoValor', e.target.value)}
-                    placeholder="0,00"
-                  />
-                </div>
-              </div>
-            )}
-
-            {renderCondominioGrid()}
-
-            <div className={`allocation-counter ${valorTotalNum > 0 && !alocacaoMatch ? 'allocation-alert' : ''}`}>
-              <div className="counter-item">
-                <span className="counter-label">Soma das Alocações:</span>
-                <span className="counter-value">{formatBRL(somaAlocacoes)}</span>
-              </div>
-              <div className="counter-item">
-                <span className="counter-label">Valor Total do Contrato:</span>
-                <span className="counter-value">{formatBRL(valorTotalNum)}</span>
-              </div>
-              <div className="counter-status">
-                {valorTotalNum > 0 ? (
-                  alocacaoMatch ? (
-                    <span className="status-ok">OK ✓</span>
-                  ) : (
-                    <span className="status-diff">
-                      Diferença: {formatBRL(diferencaAlocacao)}
-                    </span>
-                  )
-                ) : (
-                  <span className="status-neutral">Informe o valor total</span>
-                )}
-              </div>
-            </div>
-
-            <div className="form-row form-row-checkbox">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={!!editing.boletoRestituicao}
-                  onChange={(e) => updateField('boletoRestituicao', e.target.checked)}
-                />
-                Restituição de Boleto
-              </label>
-              {editing.boletoRestituicao && (
-                <input
-                  value={editing.valorRestituicao}
-                  onChange={(e) => updateField('valorRestituicao', e.target.value)}
-                  placeholder="Valor da restituição R$"
-                />
-              )}
-            </div>
-
-            {editing.boletoRestituicao && (
-              <div className="boleto-info">
-                Restituição de Boleto: {formatBRL(parseNumber(editing.valorRestituicao))} + R$ 3,00 (taxa) = {formatBRL(valorRestituicaoNum)}
-              </div>
-            )}
-
-            <div className="agesc-info">
-              Taxa AGESC aplicada: {formatBRL(valorTotalNum * TAXA_AGESC)} ({(TAXA_AGESC * 100).toFixed(1)}%)
-            </div>
-            <div className="fundo-reserva-info">
-              Fundo de Reserva (informativo): {formatBRL(valorTotalNum * TAXA_FUNDO_RESERVA)} ({(TAXA_FUNDO_RESERVA * 100).toFixed(0)}%)
-            </div>
-          </div>
-
-          <div className="modal-footer">
-            <button className="btn btn-secondary" onClick={closeModal} disabled={saving}>Cancelar</button>
-            <button className="btn btn-primary" onClick={saveContract} disabled={saving}>
-              {saving ? 'Salvando...' : 'Salvar'}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderDashboard = () => (
-    <div className="dashboard">
-      <div className="dashboard-summary">
-        <div className="summary-card">
-          <span className="summary-label">Total de Contratos</span>
-          <span className="summary-value">{formatBRL(dashboard.totalContratos)}</span>
-        </div>
-        <div className="summary-card">
-          <span className="summary-label">Total Alocado</span>
-          <span className="summary-value">{formatBRL(dashboard.totalAlocado)}</span>
-        </div>
-        <div className="summary-card">
-          <span className="summary-label">Saldo (Total − Alocado)</span>
-          <span className="summary-value">{formatBRL(dashboard.saldo)}</span>
-        </div>
-      </div>
-
-      <div className="dashboard-table-wrap">
-        <table className="dashboard-table">
-          <thead>
-            <tr>
-              <th>Condomínio</th>
-              <th>Valor Fixo Alocado</th>
-              <th>Contratos</th>
-            </tr>
-          </thead>
-          <tbody>
-            {Object.entries(dashboard.map)
-              .filter(([, v]) => v.alocado > 0 || v.contratos > 0)
-              .map(([name, v]) => (
-                <tr key={name}>
-                  <td>{name}</td>
-                  <td>{formatBRL(v.alocado)}</td>
-                  <td>{v.contratos}</td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-
-  const renderContracts = () => (
-    <div className="contracts-view">
-      <div className="contracts-toolbar">
-        <input
-          className="search-input"
-          placeholder="Buscar por número, fornecedor ou objeto..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button className="btn btn-primary" onClick={openNewContract}>+ Novo Contrato</button>
-      </div>
-
-      {loading && <div className="empty-state">Carregando contratos...</div>}
-
-      <div className="contracts-list">
-        {!loading && filteredContracts.length === 0 && (
-          <div className="empty-state">Nenhum contrato cadastrado.</div>
-        )}
-        {filteredContracts.map((c) => (
-          <div key={c.id} className="contract-card">
-            <div className="contract-card-header">
-              <div>
-                <strong>{c.numero}</strong> — {c.fornecedor}
-              </div>
-              <div className="contract-card-actions">
-                <button className="btn btn-small" onClick={() => openNewAditivo(c)}>+ Aditivo</button>
-                <button className="btn btn-small" onClick={() => openEditContract(c)}>Editar</button>
-                <button className="btn btn-small btn-danger" onClick={() => deleteContract(c.id)}>Excluir</button>
-              </div>
-            </div>
-            <div className="contract-card-body">
-              <div><strong>Objeto:</strong> {c.objeto || '—'}</div>
-              <div><strong>Valor Total:</strong> {formatBRL(c.valorTotal)}</div>
-              <div><strong>Vigência:</strong> {c.dataInicio || '—'} a {c.dataFim || '—'}</div>
-              <div><strong>Condomínios:</strong> {Object.keys(c.condominios || {}).filter((k) => k !== 'Todos').length}</div>
-              {c.temAditivo && (
-                <div><strong>Aditivo:</strong> {c.aditivoDescricao || '—'} ({formatBRL(c.aditivoValor)})</div>
-              )}
-              {c.linkPdf && (
-                <div><strong>PDF:</strong> <a href={c.linkPdf} target="_blank" rel="noreferrer">Abrir</a></div>
-              )}
-              {c.boletoRestituicao && (
-                <div><strong>Restituição Boleto:</strong> {formatBRL(parseNumber(c.valorRestituicao) + BOLETO_RESTITUICAO_TAXA)}</div>
-              )}
-              {(c.aditivos || []).length > 0 && (
-                <div><strong>Aditivos:</strong> {c.aditivos.length}</div>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
+  /* --- Renderização --- */
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>Gestão de Contratos</h1>
-        <nav className="app-nav">
-          <button
-            className={view === 'dashboard' ? 'nav-btn active' : 'nav-btn'}
-            onClick={() => setView('dashboard')}
-          >Dashboard</button>
-          <button
-            className={view === 'contracts' ? 'nav-btn active' : 'nav-btn'}
-            onClick={() => setView('contracts')}
-          >Contratos</button>
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+      <header className="bg-blue-900 text-white p-6 shadow-xl flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <Building2 size={32} />
+          <h1 className="text-2xl font-black tracking-tighter">SISTEMA QUANTA</h1>
+        </div>
+        <nav className="flex gap-2">
+          <button onClick={() => setActiveTab('dashboard')} className={`px-6 py-2 rounded-full font-bold transition-all ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Dashboard</button>
+          <button onClick={() => setActiveTab('contratos')} className={`px-6 py-2 rounded-full font-bold transition-all ${activeTab === 'contratos' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Contratos</button>
         </nav>
       </header>
 
-      <main className="app-main">
-        {view === 'dashboard' ? renderDashboard() : renderContracts()}
-      </main>
+      <main className="max-w-7xl mx-auto p-8">
+        {loading ? (
+          <div className="flex flex-col items-center py-20 gap-4">
+            <Loader2 className="animate-spin text-blue-900" size={48} />
+            <p className="font-bold text-slate-400 uppercase tracking-widest">Sincronizando com AGESC...</p>
+          </div>
+        ) : activeTab === 'dashboard' ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {condominios.map(c => {
+              const alocacaoTotal = contratos.reduce((sum, ct) => sum + (Number(ct.alocacoes[c.nome]) || 0), 0);
+              const receitaBruta = (Number(c.qtd_pnr) + Number(c.qtd_civis)) * ((Number(c.despesa_estimada) / (Number(c.qtd_pnr) + Number(c.qtd_civis))) / 0.905);
+              const taxaAgesc = receitaBruta * TAXA_AGESC_RATE;
+              const liquido = receitaBruta - taxaAgesc - alocacaoTotal + BOLETO_RESTITUICAO;
 
-      {renderModal()}
+              return (
+                <div key={c.id} className="bg-white rounded-3xl shadow-sm border p-6 hover:shadow-xl transition-all">
+                  <h3 className="font-black text-xl text-blue-900 mb-2">{c.nome}</h3>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between"><span>Receita Bruta:</span><span className="font-bold">R$ {receitaBruta.toLocaleString('pt-BR', {minimumFractionDigits:2})}</span></div>
+                    <div className="flex justify-between text-red-500"><span>− Taxa AGESC (4,5%):</span><span className="font-bold">R$ {taxaAgesc.toLocaleString('pt-BR', {minimumFractionDigits:2})}</span></div>
+                    <div className="flex justify-between text-red-500"><span>− Contratos Alocados:</span><span className="font-bold">R$ {alocacaoTotal.toLocaleString('pt-BR', {minimumFractionDigits:2})}</span></div>
+                    <div className="flex justify-between text-emerald-600"><span>+ Restituição Boleto:</span><span className="font-bold">R$ {BOLETO_RESTITUICAO.toFixed(2)}</span></div>
+                    <div className="pt-4 border-t mt-2">
+                      <p className="text-[10px] font-black uppercase text-slate-400">Repasse Líquido</p>
+                      <p className="text-2xl font-black text-blue-900">R$ {liquido.toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="max-w-4xl mx-auto bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200">
+            <div className="bg-blue-900 p-8 text-white">
+              <h2 className="text-2xl font-black flex items-center gap-3"><FileText /> GESTÃO DE CONTRATOS</h2>
+              <p className="text-blue-200 text-sm mt-1">Cadastre empresas e aloque valores por condomínio.</p>
+            </div>
+            
+            <form onSubmit={saveContract} className="p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div><label className="block text-xs font-black text-slate-400 uppercase mb-1">Nº Contrato</label>
+                <input className="w-full bg-slate-100 border-none rounded-xl p-4 focus:ring-2 ring-blue-500" value={contractForm.numero_contrato} onChange={e => setContractForm({...contractForm, numero_contrato: e.target.value})} required /></div>
+                <div><label className="block text-xs font-black text-slate-400 uppercase mb-1">Empresa Contratada</label>
+                <input className="w-full bg-slate-100 border-none rounded-xl p-4 focus:ring-2 ring-blue-500" value={contractForm.empresa_contratada} onChange={e => setContractForm({...contractForm, empresa_contratada: e.target.value})} required /></div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div><label className="block text-xs font-black text-slate-400 uppercase mb-1">Valor Mensal Total (R$)</label>
+                <input type="number" step="0.01" className="w-full bg-blue-50 border-none rounded-xl p-4 font-black text-blue-900" value={contractForm.valor_mensal} onChange={e => setContractForm({...contractForm, valor_mensal: e.target.value})} required /></div>
+                <div><label className="block text-xs font-black text-slate-400 uppercase mb-1">Início Vigência</label>
+                <input type="date" className="w-full bg-slate-100 border-none rounded-xl p-4" value={contractForm.prazo_inicio} onChange={e => setContractForm({...contractForm, prazo_inicio: e.target.value})} /></div>
+                <div><label className="block text-xs font-black text-slate-400 uppercase mb-1">Fim Vigência</label>
+                <input type="date" className="w-full bg-slate-100 border-none rounded-xl p-4" value={contractForm.prazo_fim} onChange={e => setContractForm({...contractForm, prazo_fim: e.target.value})} /></div>
+              </div>
+
+              <div className="border-t pt-6">
+                <h3 className="font-black text-blue-900 mb-4 flex items-center gap-2"><Building2 size={20}/> ALOCAÇÃO POR CONDOMÍNIO</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto p-4 bg-slate-50 rounded-2xl border border-slate-200 custom-scrollbar">
+                  <label className="flex items-center gap-3 p-3 bg-white rounded-xl border border-blue-100 cursor-pointer hover:bg-blue-50">
+                    <input type="checkbox" className="w-5 h-5 rounded" checked={!!contractForm.alocacoes['Todos']} onChange={() => handleToggleCondo('Todos')} />
+                    <span className="font-black text-blue-900 uppercase text-xs">Selecionar Todos</span>
+                  </label>
+                  <label className="flex items-center gap-3 p-3 bg-white rounded-xl border border-amber-100 cursor-pointer hover:bg-amber-50">
+                    <input type="checkbox" className="w-5 h-5 rounded" checked={contractForm.alocacoes['AGESC'] !== undefined} onChange={() => handleToggleCondo('AGESC')} />
+                    <span className="font-black text-amber-700 uppercase text-xs">Administração AGESC</span>
+                  </label>
+                  {CONDOMINIOS_LIST.map(name => (
+                    <div key={name} className="flex flex-col gap-2 p-3 bg-white rounded-xl border border-slate-100">
+                      <label className="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" className="w-5 h-5 rounded text-blue-600" checked={contractForm.alocacoes[name] !== undefined} onChange={() => handleToggleCondo(name)} />
+                        <span className="text-xs font-bold text-slate-700">{name}</span>
+                      </label>
+                      {contractForm.alocacoes[name] !== undefined && (
+                        <input type="number" step="0.01" placeholder="Valor R$" className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-sm font-bold text-blue-900" value={contractForm.alocacoes[name]} onChange={e => handleAlocacaoChange(name, e.target.value)} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-6 bg-blue-900 rounded-2xl text-white flex justify-between items-center shadow-inner">
+                <div>
+                  <p className="text-[10px] font-black uppercase opacity-60">Soma das Alocações</p>
+                  <p className="text-2xl font-black">R$ {Object.values(contractForm.alocacoes).reduce((a, b) => a + (Number(b) || 0), 0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-black uppercase opacity-60">Status</p>
+                  {Math.abs(Object.values(contractForm.alocacoes).reduce((a, b) => a + (Number(b) || 0), 0) - (Number(contractForm.valor_mensal) || 0)) < 0.01 ? (
+                    <span className="flex items-center gap-1 text-emerald-400 font-black"><CheckCircle2 size={16}/> VALORES BATEM</span>
+                  ) : (
+                    <span className="text-amber-400 font-black">DIFERENÇA DETECTADA</span>
+                  )}
+                </div>
+              </div>
+
+              <button type="submit" disabled={saving} className="w-full bg-blue-900 text-white p-6 rounded-2xl font-black text-xl hover:bg-blue-800 transition-all shadow-xl flex justify-center items-center gap-3">
+                {saving ? <Loader2 className="animate-spin" /> : <><PlusCircle /> SALVAR CONTRATO E ALOCAÇÕES</>}
+              </button>
+            </form>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

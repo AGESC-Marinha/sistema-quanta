@@ -7,9 +7,9 @@ import {
   Lock, History, Archive, Clock, Database, Zap
 } from 'lucide-react';
 
-// Configuração Supabase
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Configuração Supabase — chaves fixas (NÃO usar import.meta.env)
+const supabaseUrl = 'https://seudoprojeto.supabase.co';
+const supabaseKey = 'sua-chave-anon-key-aqui';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const MESES = [
@@ -84,14 +84,22 @@ const App = () => {
 
   const fetchData = async () => {
     setLoading(true);
-    const { data: condos } = await supabase.from('condominios').select('*').order('nome');
-    const { data: conts } = await supabase.from('contratos').select('*');
-    const { data: rats } = await supabase.from('rateios').select('*');
+    try {
+      const { data: condos } = await supabase.from('condominios').select('*').order('nome');
+      const { data: conts } = await supabase.from('contratos').select('*');
+      const { data: rats } = await supabase.from('rateios').select('*');
 
-    setCondominios(condos || []);
-    setContratos(conts || []);
-    setRateios(rats || []);
-    setLoading(false);
+      setCondominios(condos || []);
+      setContratos(conts || []);
+      setRateios(rats || []);
+    } catch (error) {
+      console.error('Erro ao buscar dados:', error.message);
+      setCondominios([]);
+      setContratos([]);
+      setRateios([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const fetchFechamentos = async (mes, ano) => {
@@ -132,6 +140,8 @@ const App = () => {
 
   // Lógica de Cálculo de Rateio por Condomínio
   const getDeducoesPorCondominio = useCallback((condoId, condoNome) => {
+    if (!rateios || rateios.length === 0) return 0;
+
     let totalDeducao = 0;
 
     const diretos = rateios.filter(r => r.condominio_id === condoId || r.condominio === condoNome);
@@ -147,15 +157,26 @@ const App = () => {
 
   // Cálculo consolidado por condomínio (usado em Dashboard e Fechamento)
   const calcularValoresCondominio = useCallback((condo) => {
+    if (!condo || loading) {
+      return {
+        receitaBruta: 0,
+        taxaAgesc: 0,
+        fundoReserva: 0,
+        deducoesContratos: 0,
+        restituicaoBoleto: 0,
+        valorLiquido: 0,
+        taxaUnitaria: 0
+      };
+    }
+
     const receitaBruta = Number(condo.despesa_estimada || 0);
     const taxaAgesc = receitaBruta * 0.045;
     const fundoReserva = receitaBruta * 0.05;
     const deducoesContratos = getDeducoesPorCondominio(condo.id, condo.nome);
     const restituicaoBoleto = Number(condo.qtd_civis || 0) * 3;
     const valorLiquido = receitaBruta - taxaAgesc - fundoReserva - deducoesContratos + restituicaoBoleto;
-    const taxaUnitaria = (condo.qtd_pnr + condo.qtd_civis) > 0
-      ? receitaBruta / (condo.qtd_pnr + condo.qtd_civis)
-      : 0;
+    const totalUnidades = Number(condo.qtd_pnr || 0) + Number(condo.qtd_civis || 0);
+    const taxaUnitaria = totalUnidades > 0 ? receitaBruta / totalUnidades : 0;
 
     return {
       receitaBruta,
@@ -166,20 +187,24 @@ const App = () => {
       valorLiquido,
       taxaUnitaria
     };
-  }, [getDeducoesPorCondominio]);
+  }, [getDeducoesPorCondominio, loading]);
 
   // Mapa de fechamentos salvos por condominio_id
   const fechamentoMap = useMemo(() => {
     const map = {};
+    if (!fechamentos || fechamentos.length === 0) return map;
     fechamentos.forEach(f => {
-      map[f.condominio_id] = f;
+      if (f && f.condominio_id) {
+        map[f.condominio_id] = f;
+      }
     });
     return map;
   }, [fechamentos]);
 
   // Verifica se o mês/ano está encerrado
   const mesEncerrado = useMemo(() => {
-    return fechamentos.some(f => f.status === 'fechado');
+    if (!fechamentos || fechamentos.length === 0) return false;
+    return fechamentos.some(f => f && f.status === 'fechado');
   }, [fechamentos]);
 
   // Indica se o dashboard está exibindo snapshot gravado
@@ -357,24 +382,24 @@ const App = () => {
         {dashboardUsaSnapshot ? <Database size={18} /> : <Zap size={18} />}
         <span className="text-sm font-medium">
           {dashboardUsaSnapshot
-            ? `Snapshot Gravado — Exibindo valores salvos de ${MESES.find(m => m.value === mesSelecionado)?.label}/${anoSelecionado}`
+            ? `Snapshot Gravado — Exibindo valores salvos de ${MESES.find(m => m.value === mesSelecionado)?.label || ''}/${anoSelecionado}`
             : 'Cálculos em Tempo Real — Os valores exibidos são calculados dinamicamente a partir dos dados atuais'}
         </span>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {condominios
-          .filter(c => c.nome.toLowerCase().includes(searchTerm.toLowerCase()))
+          .filter(c => c && c.nome && c.nome.toLowerCase().includes(searchTerm.toLowerCase()))
           .map(condo => {
             const calculado = calcularValoresCondominio(condo);
             const snapshot = fechamentoMap[condo.id];
             const valores = snapshot && snapshot.status === 'fechado' ? {
-              receitaBruta: Number(snapshot.receita_bruta),
-              taxaAgesc: Number(snapshot.taxa_agesc),
-              fundoReserva: Number(snapshot.fundo_reserva),
-              deducoesContratos: Number(snapshot.deducoes_contratos),
-              restituicaoBoleto: Number(snapshot.restituicao_boleto),
-              valorLiquido: Number(snapshot.valor_liquido),
+              receitaBruta: Number(snapshot.receita_bruta || 0),
+              taxaAgesc: Number(snapshot.taxa_agesc || 0),
+              fundoReserva: Number(snapshot.fundo_reserva || 0),
+              deducoesContratos: Number(snapshot.deducoes_contratos || 0),
+              restituicaoBoleto: Number(snapshot.restituicao_boleto || 0),
+              valorLiquido: Number(snapshot.valor_liquido || 0),
               taxaUnitaria: calculado.taxaUnitaria
             } : calculado;
 
@@ -442,7 +467,7 @@ const App = () => {
           <div>
             <p className="font-semibold">Mês Encerrado</p>
             <p className="text-sm">
-              O período de {MESES.find(m => m.value === mesSelecionado)?.label}/{anoSelecionado} está fechado.
+              O período de {MESES.find(m => m.value === mesSelecionado)?.label || ''}/{anoSelecionado} está fechado.
               As edições estão bloqueadas para garantir a integridade do histórico.
             </p>
           </div>
@@ -487,7 +512,7 @@ const App = () => {
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => salvarFechamento('rascunho')}
-            disabled={salvandoFechamento || mesEncerrado || carregandoFechamento}
+            disabled={salvandoFechamento || mesEncerrado || carregandoFechamento || loading}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
           >
             <Save size={18} />
@@ -495,7 +520,7 @@ const App = () => {
           </button>
           <button
             onClick={() => salvarFechamento('fechado')}
-            disabled={salvandoFechamento || mesEncerrado || carregandoFechamento}
+            disabled={salvandoFechamento || mesEncerrado || carregandoFechamento || loading}
             className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-colors"
           >
             <Lock size={18} />
@@ -509,7 +534,7 @@ const App = () => {
           <div className="flex items-center gap-2">
             <Building2 size={20} className="text-slate-600" />
             <h3 className="font-semibold text-slate-800">
-              Valores Calculados — {MESES.find(m => m.value === mesSelecionado)?.label}/{anoSelecionado}
+              Valores Calculados — {MESES.find(m => m.value === mesSelecionado)?.label || ''}/{anoSelecionado}
             </h3>
           </div>
           {carregandoFechamento && <span className="text-sm text-slate-400">Carregando...</span>}
@@ -618,7 +643,7 @@ const App = () => {
       {fechamentosHistorico.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-8 text-slate-400">
           <Archive size={40} className="mb-2" />
-          <p>Nenhum fechamento encontrado para {MESES.find(m => m.value === historicoMes)?.label}/{historicoAno}.</p>
+          <p>Nenhum fechamento encontrado para {MESES.find(m => m.value === historicoMes)?.label || ''}/{historicoAno}.</p>
         </div>
       ) : (
         <div className="overflow-x-auto">
@@ -878,7 +903,7 @@ const App = () => {
     </div>
   );
 
-  // Modal de Detalhes do Condomínio
+  // Modal de Detalhes do Condomínio (com scroll)
   const renderCondoModal = () => {
     if (!selectedCondo) return null;
     const valores = calcularValoresCondominio(selectedCondo);
@@ -907,11 +932,11 @@ const App = () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                 <div className="bg-slate-50 p-3 rounded-lg">
                   <p className="text-slate-500">Unidades PNR</p>
-                  <p className="font-bold text-slate-800">{selectedCondo.qtd_pnr}</p>
+                  <p className="font-bold text-slate-800">{selectedCondo.qtd_pnr || 0}</p>
                 </div>
                 <div className="bg-slate-50 p-3 rounded-lg">
                   <p className="text-slate-500">Unidades Civis</p>
-                  <p className="font-bold text-slate-800">{selectedCondo.qtd_civis}</p>
+                  <p className="font-bold text-slate-800">{selectedCondo.qtd_civis || 0}</p>
                 </div>
                 <div className="bg-slate-50 p-3 rounded-lg">
                   <p className="text-slate-500">Fundo Reserva</p>
@@ -936,10 +961,10 @@ const App = () => {
               <div>
                 <h4 className="font-semibold text-slate-700 mb-2">Sistema de Elevadores</h4>
                 <div className="text-sm space-y-1">
-                  <p>Quantidade: {selectedCondo.qtd_elevadores}</p>
+                  <p>Quantidade: {selectedCondo.qtd_elevadores || 0}</p>
                   <p>Empresa: {selectedCondo.empresa_elevadores || 'N/I'}</p>
-                  <p>Em Operação: {selectedCondo.elevadores_operacao}</p>
-                  <p>Em Manutenção: {selectedCondo.elevadores_manutencao}</p>
+                  <p>Em Operação: {selectedCondo.elevadores_operacao || 0}</p>
+                  <p>Em Manutenção: {selectedCondo.elevadores_manutencao || 0}</p>
                 </div>
               </div>
             )}

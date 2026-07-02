@@ -1,649 +1,485 @@
-import React, { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { 
-  Building2, MapPin, Users, DollarSign, Trash2, 
-  LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle,
-  CreditCard, Flame, ArrowUpCircle, ExternalLink, X,
-  FileText, Calendar, Percent, Link2, ChevronDown, ChevronRight, TrendingDown, Info
-} from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import './App.css';
 
-const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const CONDOMINIOS = [
+  'Residencial Aurora', 'Residencial Bom Jesus', 'Residencial Centro', 'Residencial Das Acácias',
+  'Residencial Das Flores', 'Residencial Das Hortênsias', 'Residencial Das Palmeiras', 'Residencial Das Rosas',
+  'Edifício Everest', 'Residencial Florença', 'Residencial Girassol', 'Residencial Horizonte',
+  'Residencial Ipê Amarelo', 'Residencial Jardim Botânico', 'Residencial Jardim Europa', 'Residencial Jardim Itu',
+  'Residencial Jardim Paulista', 'Residencial Lago Azul', 'Residencial Lagoa Santa', 'Residencial Lar Cristão',
+  'Residencial Manacá', 'Residencial Maravilha', 'Residencial Monte Carlo', 'Residencial Monte Verde',
+  'Residencial Nova Esperança', 'Residencial Orquídeas', 'Residencial Paraíso', 'Residencial Parque das Águas',
+  'Residencial Parque dos Pássaros', 'Residencial Primavera', 'Residencial Quatro Estações', 'Residencial Recanto Verde',
+  'Residencial Renascer', 'Residencial Rio das Pedras', 'Residencial Santa Cruz', 'Residencial Santa Helena',
+  'Residencial Santa Mônica', 'Residencial Santo Antônio', 'Residencial São Jorge', 'Residencial São José',
+  'Residencial Serra Azul', 'Residencial Sol Nascente', 'Residencial Vale do Sol'
+];
 
-const BOLETO_FEE = 3.00;
-const AGESC_FEE_RATE = 0.045;
-const FUNDO_RESERVA_RATE = 0.05;
+const OPCOES_EXTRA = ['Todos', 'AGESC'];
 
-const INITIAL_FORM = {
-  nome: '', endereco: '', cnpj: '', dados_bancarios: '', 
-  saldo_fundo_reserva: '', projetos_incendio: '', 
-  possui_elevadores: false, qtd_elevadores: '', 
-  elevadores_operacao: '', elevadores_manutencao: '',
-  empresa_elevadores: '', status_manutencao: '',
-  qtd_pnr: '', qtd_civis: '', despesa_estimada: ''
+const TAXA_AGESC = 0.05; // 5% AGESC fee
+
+const formatBRL = (value) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
+
+const parseNumber = (value) => {
+  if (typeof value === 'number') return value;
+  if (!value) return 0;
+  const cleaned = String(value).replace(/[^0-9,-]/g, '').replace(',', '.');
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
 };
 
-const INITIAL_CONTRACT_FORM = {
-  numero_contrato: '',
-  empresa_contratada: '',
-  valor_mensal: '',
-  tem_aditivo: false,
-  aditivo_descricao: '',
-  aditivo_valor: '',
-  prazo_inicio: '',
-  prazo_fim: '',
-  link_pdf: ''
-};
+const uid = () => Math.random().toString(36).slice(2, 10);
 
-const INITIAL_RATEIO_FORM = {
-  condominio_id: '',
-  percentual: ''
-};
+const emptyContract = () => ({
+  id: uid(),
+  numero: '',
+  fornecedor: '',
+  objeto: '',
+  valorTotal: '',
+  dataInicio: '',
+  dataFim: '',
+  condominios: {}, // { nome: valorFixo }
+  aditivos: [],
+  parentId: null,
+  isAditivo: false,
+  boletoRestituicao: false,
+  valorRestituicao: ''
+});
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [condominios, setCondominios] = useState([]);
-  const [contratos, setContratos] = useState([]);
-  const [rateios, setRateios] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [editingId, setEditingId] = useState(null);
-  const [selectedCondo, setSelectedCondo] = useState(null);
-  const [form, setForm] = useState(INITIAL_FORM);
+  const [contracts, setContracts] = useState([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [view, setView] = useState('dashboard'); // dashboard | contracts
+  const [search, setSearch] = useState('');
 
-  const [contractForm, setContractForm] = useState(INITIAL_CONTRACT_FORM);
-  const [editingContractId, setEditingContractId] = useState(null);
-  const [savingContract, setSavingContract] = useState(false);
-  const [expandedContract, setExpandedContract] = useState(null);
-  const [rateioForm, setRateioForm] = useState(INITIAL_RATEIO_FORM);
-  const [savingRateio, setSavingRateio] = useState(false);
-
-  useEffect(() => {
-    fetchCondominios();
-    fetchContratos();
-    fetchRateios();
+  const openNewContract = useCallback(() => {
+    setEditing(emptyContract());
+    setModalOpen(true);
   }, []);
 
-  async function fetchCondominios() {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase.from('condominios').select('*').order('nome');
-      if (error) throw error;
-      setCondominios(data || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const openEditContract = useCallback((contract) => {
+    setEditing(JSON.parse(JSON.stringify(contract)));
+    setModalOpen(true);
+  }, []);
 
-  async function fetchContratos() {
-    try {
-      const { data, error } = await supabase.from('contratos').select('*').order('numero_contrato');
-      if (error) throw error;
-      setContratos(data || []);
-    } catch (err) {
-      console.error('Erro ao buscar contratos:', err);
-    }
-  }
+  const openNewAditivo = useCallback((parent) => {
+    const aditivo = emptyContract();
+    aditivo.isAditivo = true;
+    aditivo.parentId = parent.id;
+    aditivo.numero = `${parent.numero}-ADT/${(parent.aditivos?.length || 0) + 1}`;
+    aditivo.fornecedor = parent.fornecedor;
+    aditivo.objeto = `Aditivo: ${parent.objeto}`;
+    aditivo.dataInicio = parent.dataInicio;
+    aditivo.dataFim = parent.dataFim;
+    // Herança de condomínios e valores
+    aditivo.condominios = JSON.parse(JSON.stringify(parent.condominios || {}));
+    aditivo.valorTotal = parent.valorTotal;
+    setEditing(aditivo);
+    setModalOpen(true);
+  }, []);
 
-  async function fetchRateios() {
-    try {
-      const { data, error } = await supabase.from('rateios').select('*');
-      if (error) throw error;
-      setRateios(data || []);
-    } catch (err) {
-      console.error('Erro ao buscar rateios:', err);
-    }
-  }
+  const closeModal = useCallback(() => {
+    setModalOpen(false);
+    setEditing(null);
+  }, []);
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setSaving(true);
-    const payload = {
-      ...form,
-      qtd_pnr: Number(form.qtd_pnr) || 0,
-      qtd_civis: Number(form.qtd_civis) || 0,
-      despesa_estimada: Number(form.despesa_estimada) || 0,
-      saldo_fundo_reserva: Number(form.saldo_fundo_reserva) || 0,
-      qtd_elevadores: Number(form.qtd_elevadores) || 0,
-      elevadores_operacao: Number(form.elevadores_operacao) || 0,
-      elevadores_manutencao: Number(form.elevadores_manutencao) || 0
-    };
-
-    try {
-      if (editingId) {
-        const { error } = await supabase.from('condominios').update(payload).eq('id', editingId);
-        if (error) throw error;
-        setEditingId(null);
-        alert('Atualizado com sucesso!');
-      } else {
-        const { error } = await supabase.from('condominios').insert([payload]);
-        if (error) throw error;
-        alert('Cadastrado com sucesso!');
-      }
-      setForm(INITIAL_FORM);
-      fetchCondominios();
-      setActiveTab('dashboard');
-    } catch (err) {
-      alert('Erro ao salvar: ' + err.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function handleEdit(c) {
-    setEditingId(c.id);
-    setForm({ ...c });
-    setActiveTab('gerenciar');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  async function handleDelete(id) {
-    if (!confirm('Tem certeza que deseja excluir este condomínio?')) return;
-    try {
-      const { error } = await supabase.from('condominios').delete().eq('id', id);
-      if (error) throw error;
-      fetchCondominios();
-    } catch (err) {
-      alert('Erro ao excluir: ' + err.message);
-    }
-  }
-
-  async function handleContractSubmit(e) {
-    e.preventDefault();
-    setSavingContract(true);
-    const payload = {
-      numero_contrato: contractForm.numero_contrato,
-      empresa_contratada: contractForm.empresa_contratada,
-      valor_mensal: Number(contractForm.valor_mensal) || 0,
-      tem_aditivo: contractForm.tem_aditivo,
-      aditivo_descricao: contractForm.aditivo_descricao,
-      aditivo_valor: Number(contractForm.aditivo_valor) || 0,
-      prazo_inicio: contractForm.prazo_inicio,
-      prazo_fim: contractForm.prazo_fim,
-      link_pdf: contractForm.link_pdf
-    };
-
-    try {
-      if (editingContractId) {
-        const { error } = await supabase.from('contratos').update(payload).eq('id', editingContractId);
-        if (error) throw error;
-        setEditingContractId(null);
-        alert('Contrato atualizado com sucesso!');
-      } else {
-        const { error } = await supabase.from('contratos').insert([payload]);
-        if (error) throw error;
-        alert('Contrato cadastrado com sucesso!');
-      }
-      setContractForm(INITIAL_CONTRACT_FORM);
-      fetchContratos();
-    } catch (err) {
-      alert('Erro ao salvar contrato: ' + err.message);
-    } finally {
-      setSavingContract(false);
-    }
-  }
-
-  function handleEditContract(c) {
-    setEditingContractId(c.id);
-    setContractForm({
-      numero_contrato: c.numero_contrato || '',
-      empresa_contratada: c.empresa_contratada || '',
-      valor_mensal: c.valor_mensal?.toString() || '',
-      tem_aditivo: c.tem_aditivo || false,
-      aditivo_descricao: c.aditivo_descricao || '',
-      aditivo_valor: c.aditivo_valor?.toString() || '',
-      prazo_inicio: c.prazo_inicio || '',
-      prazo_fim: c.prazo_fim || '',
-      link_pdf: c.link_pdf || ''
-    });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  async function handleDeleteContract(id) {
-    if (!confirm('Tem certeza que deseja excluir este contrato? Os rateios vinculados também serão removidos.')) return;
-    try {
-      await supabase.from('rateios').delete().eq('contrato_id', id);
-      const { error } = await supabase.from('contratos').delete().eq('id', id);
-      if (error) throw error;
-      fetchContratos();
-      fetchRateios();
-      alert('Contrato excluído com sucesso!');
-    } catch (err) {
-      alert('Erro ao excluir contrato: ' + err.message);
-    }
-  }
-
-  async function handleRateioSubmit(contratoId) {
-    if (!rateioForm.condominio_id || !rateioForm.percentual) {
-      alert('Selecione um condomínio e informe o percentual.');
+  const saveContract = useCallback(() => {
+    if (!editing) return;
+    if (!editing.numero || !editing.fornecedor) {
+      alert('Preencha número e fornecedor.');
       return;
     }
-    setSavingRateio(true);
-    const payload = {
-      contrato_id: contratoId,
-      condominio_id: rateioForm.condominio_id,
-      percentual: Number(rateioForm.percentual) || 0
+    const soma = Object.values(editing.condominios).reduce((a, b) => a + parseNumber(b), 0);
+    const total = parseNumber(editing.valorTotal);
+    if (total > 0 && Math.abs(soma - total) > 0.01) {
+      const ok = confirm(
+        `A soma das alocações (${formatBRL(soma)}) não bate com o valor total (${formatBRL(total)}). Deseja salvar mesmo assim?`
+      );
+      if (!ok) return;
+    }
+    setContracts((prev) => {
+      const exists = prev.find((c) => c.id === editing.id);
+      if (exists) {
+        return prev.map((c) => (c.id === editing.id ? editing : c));
+      }
+      if (editing.parentId) {
+        return prev.map((c) =>
+          c.id === editing.parentId
+            ? { ...c, aditivos: [...(c.aditivos || []), editing] }
+            : c
+        );
+      }
+      return [...prev, editing];
+    });
+    closeModal();
+  }, [editing, closeModal]););
+
+  const deleteContract = useCallback((id) => {
+    if (!confirm('Excluir este contrato?')) return;
+    setContracts((prev) => prev.filter((c) => c.id !== id));
+  }, []);
+
+  const updateField = (field, value) => {
+    setEditing((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const toggleCondominio = (name) => {
+    setEditing((prev) => {
+      const cond = { ...prev.condominios };
+      if (name === 'Todos') {
+        if (cond['Todos']) {
+          delete cond['Todos'];
+          CONDOMINIOS.forEach((c) => delete cond[c]);
+        } else {
+          cond['Todos'] = prev.valorTotal || '';
+          CONDOMINIOS.forEach((c) => {
+            if (!(c in cond)) cond[c] = '';
+          });
+        }
+        return { ...prev, condominios: cond };
+      }
+      if (cond[name]) {
+        delete cond[name];
+      } else {
+        cond[name] = '';
+      }
+      return { ...prev, condominios: cond };
+    });
+  };
+
+  const setCondominioValue = (name, value) => {
+    setEditing((prev) => ({
+      ...prev,
+      condominios: { ...prev.condominios, [name]: value }
+    }));
+  };
+
+  const somaAlocacoes = useMemo(() => {
+    if (!editing) return 0;
+    return Object.entries(editing.condominios)
+      .filter(([k]) => k !== 'Todos' && k !== 'AGESC')
+      .reduce((a, [, v]) => a + parseNumber(v), 0);
+  }, [editing]);
+
+  const valorTotalNum = useMemo(() => parseNumber(editing?.valorTotal), [editing]);
+  const alocacaoMatch = Math.abs(somaAlocacoes - valorTotalNum) <= 0.01 && valorTotalNum > 0;
+
+  // Dashboard: valor fixo alocado por condomínio subtraído do total
+  const dashboard = useMemo(() => {
+    const map = {};
+    CONDOMINIOS.forEach((c) => (map[c] = { alocado: 0, contratos: 0 }));
+    map['AGESC'] = { alocado: 0, contratos: 0 };
+
+    const processContract = (c) => {
+      Object.entries(c.condominios || {}).forEach(([name, val]) => {
+        if (name === 'Todos') return;
+        if (!map[name]) return;
+        const v = parseNumber(val);
+        map[name].alocado += v;
+        map[name].contratos += 1;
+      });
+      (c.aditivos || []).forEach(processContract);
     };
+    contracts.forEach(processContract);
 
-    try {
-      const { error } = await supabase.from('rateios').insert([payload]);
-      if (error) throw error;
-      setRateioForm(INITIAL_RATEIO_FORM);
-      fetchRateios();
-    } catch (err) {
-      alert('Erro ao salvar rateio: ' + err.message);
-    } finally {
-      setSavingRateio(false);
+    const totalAlocado = Object.values(map).reduce((a, b) => a + b.alocado, 0);
+    const totalContratos = contracts.reduce((a, c) => a + parseNumber(c.valorTotal), 0);
+    const saldo = totalContratos - totalAlocado;
+    return { map, totalAlocado, totalContratos, saldo };
+  }, [contracts]);
+
+  const filteredContracts = useMemo(() => {
+    if (!search) return contracts;
+    const s = search.toLowerCase();
+    return contracts.filter(
+      (c) =>
+        c.numero.toLowerCase().includes(s) ||
+        c.fornecedor.toLowerCase().includes(s) ||
+        c.objeto.toLowerCase().includes(s)
+    );
+  }, [contracts, search]);
+
+  // Lock body scroll when modal open (correção de rolagem do modal)
+  useEffect(() => {
+    if (modalOpen) {
+      const original = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = original;
+      };
     }
-  }
+  }, [modalOpen]);
 
-  async function handleDeleteRateio(id) {
-    try {
-      const { error } = await supabase.from('rateios').delete().eq('id', id);
-      if (error) throw error;
-      fetchRateios();
-    } catch (err) {
-      alert('Erro ao excluir rateio: ' + err.message);
-    }
-  }
-
-  const calcularTaxa = (c) => {
-    const total = (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
-    if (total === 0) return 0;
-    return (Number(c.despesa_estimada) / total) / 0.905;
+  const renderCondominioGrid = () => {
+    if (!editing) return null;
+    const cond = editing.condominios || {};
+    return (
+      <div className="cond-grid">
+        <div className="cond-section-title">Seleção de Condomínios</div>
+        <div className="cond-grid-options">
+          {OPCOES_EXTRA.map((name) => (
+            <label key={name} className="cond-item cond-item-extra">
+              <input
+                type="checkbox"
+                checked={!!cond[name]}
+                onChange={() => toggleCondominio(name)}
+              />
+              <span>{name}</span>
+              {cond[name] !== undefined && name !== 'Todos' && (
+                <input
+                  type="text"
+                  className="cond-value-input"
+                  placeholder="R$ 0,00"
+                  value={cond[name]}
+                  onChange={(e) => setCondominioValue(name, e.target.value)}
+                />
+              )}
+            </label>
+          ))}
+        </div>
+        <div className="cond-grid-list">
+          {CONDOMINIOS.map((name) => (
+            <label key={name} className="cond-item">
+              <input
+                type="checkbox"
+                checked={!!cond[name]}
+                onChange={() => toggleCondominio(name)}
+              />
+              <span className="cond-name">{name}</span>
+              {cond[name] !== undefined && (
+                <input
+                  type="text"
+                  className="cond-value-input"
+                  placeholder="R$ 0,00"
+                  value={cond[name]}
+                  onChange={(e) => setCondominioValue(name, e.target.value)}
+                />
+              )}
+            </label>
+          ))}
+        </div>
+      </div>
+    );
   };
 
-  const calcularReceita = (c) => {
-    const total = (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
-    return calcularTaxa(c) * total;
+  const renderModal = () => {
+    if (!modalOpen || !editing) return null;
+    return (
+      <div className="modal-overlay" onClick={closeModal}>
+        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <h2>{editing.isAditivo ? 'Termo Aditivo' : 'Novo Contrato'}</h2>
+            <button className="modal-close" onClick={closeModal} aria-label="Fechar">×</button>
+          </div>
+
+          <div className="modal-body">
+            {editing.parentId && (
+              <div className="inheritance-banner">
+                Herdando dados do contrato pai. Condomínios e valores carregados automaticamente.
+              </div>
+            )}
+
+            <div className="form-row">
+              <label>Número</label>
+              <input value={editing.numero} onChange={(e) => updateField('numero', e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label>Fornecedor</label>
+              <input value={editing.fornecedor} onChange={(e) => updateField('fornecedor', e.target.value)} />
+            </div>
+            <div className="form-row">
+              <label>Objeto</label>
+              <input value={editing.objeto} onChange={(e) => updateField('objeto', e.target.value)} />
+            </div>
+            <div className="form-row form-row-3">
+              <div>
+                <label>Valor Total (R$)</label>
+                <input
+                  value={editing.valorTotal}
+                  onChange={(e) => updateField('valorTotal', e.target.value)}
+                  placeholder="0,00"
+                />
+              </div>
+              <div>
+                <label>Data Início</label>
+                <input type="date" value={editing.dataInicio} onChange={(e) => updateField('dataInicio', e.target.value)} />
+              </div>
+              <div>
+                <label>Data Fim</label>
+                <input type="date" value={editing.dataFim} onChange={(e) => updateField('dataFim', e.target.value)} />
+              </div>
+            </div>
+
+            {renderCondominioGrid()}
+
+            <div className="allocation-counter">
+              <div className="counter-item">
+                <span className="counter-label">Soma das Alocações:</span>
+                <span className="counter-value">{formatBRL(somaAlocacoes)}</span>
+              </div>
+              <div className="counter-item">
+                <span className="counter-label">Valor Total do Contrato:</span>
+                <span className="counter-value">{formatBRL(valorTotalNum)}</span>
+              </div>
+              <div className="counter-status">
+                {valorTotalNum > 0 ? (
+                  alocacaoMatch ? (
+                    <span className="status-ok">OK ✓</span>
+                  ) : (
+                    <span className="status-diff">
+                      Diferença: {formatBRL(somaAlocacoes - valorTotalNum)}
+                    </span>
+                  )
+                ) : (
+                  <span className="status-neutral">Informe o valor total</span>
+                )}
+              </div>
+            </div>
+
+            <div className="form-row form-row-checkbox">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={!!editing.boletoRestituicao}
+                  onChange={(e) => updateField('boletoRestituicao', e.target.checked)}
+                />
+                Restituição de Boleto
+              </label>
+              {editing.boletoRestituicao && (
+                <input
+                  value={editing.valorRestituicao}
+                  onChange={(e) => updateField('valorRestituicao', e.target.value)}
+                  placeholder="Valor da restituição R$"
+                />
+              )}
+            </div>
+
+            <div className="agesc-info">
+              Taxa AGESC aplicada: {formatBRL(valorTotalNum * TAXA_AGESC)} ({(TAXA_AGESC * 100).toFixed(0)}%)
+            </div>
+          </div>
+
+          <div className="modal-footer">
+            <button className="btn btn-secondary" onClick={closeModal}>Cancelar</button>
+            <button className="btn btn-primary" onClick={saveContract}>Salvar</button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
-  const calcularDeducoesContratos = (condominioId) => {
-    return rateios
-      .filter(r => r.condominio_id === condominioId)
-      .reduce((sum, r) => {
-        const contrato = contratos.find(ct => ct.id === r.contrato_id);
-        if (!contrato) return sum;
-        const valorContrato = (Number(contrato.valor_mensal) || 0) + (Number(contrato.aditivo_valor) || 0);
-        return sum + (valorContrato * (Number(r.percentual) || 0) / 100);
-      }, 0);
-  };
+  const renderDashboard = () => (
+    <div className="dashboard">
+      <div className="dashboard-summary">
+        <div className="summary-card">
+          <span className="summary-label">Total de Contratos</span>
+          <span className="summary-value">{formatBRL(dashboard.totalContratos)}</span>
+        </div>
+        <div className="summary-card">
+          <span className="summary-label">Total Alocado</span>
+          <span className="summary-value">{formatBRL(dashboard.totalAlocado)}</span>
+        </div>
+        <div className="summary-card">
+          <span className="summary-label">Saldo (Total − Alocado)</span>
+          <span className="summary-value">{formatBRL(dashboard.saldo)}</span>
+        </div>
+      </div>
 
-  const calcularTotalUnidades = (c) => {
-    return (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
-  };
+      <div className="dashboard-table-wrap">
+        <table className="dashboard-table">
+          <thead>
+            <tr>
+              <th>Condomínio</th>
+              <th>Valor Fixo Alocado</th>
+              <th>Contratos</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(dashboard.map)
+              .filter(([, v]) => v.alocado > 0 || v.contratos > 0)
+              .map(([name, v]) => (
+                <tr key={name}>
+                  <td>{name}</td>
+                  <td>{formatBRL(v.alocado)}</td>
+                  <td>{v.contratos}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 
-  const calcularAGESC = (c) => {
-    return calcularReceita(c) * AGESC_FEE_RATE;
-  };
+  const renderContracts = () => (
+    <div className="contracts-view">
+      <div className="contracts-toolbar">
+        <input
+          className="search-input"
+          placeholder="Buscar por número, fornecedor ou objeto..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <button className="btn btn-primary" onClick={openNewContract}>+ Novo Contrato</button>
+      </div>
 
-  const calcularFundoReserva = (c) => {
-    return calcularReceita(c) * FUNDO_RESERVA_RATE;
-  };
-
-  const calcularValorLiquido = (c) => {
-    const receita = calcularReceita(c);
-    const agesc = calcularAGESC(c);
-    const deducoes = calcularDeducoesContratos(c.id);
-    const boleto = BOLETO_FEE;
-    // Taxa de Boleto (R$ 3,00) agora é somada como restituição/cortesia aos condomínios
-    // Fundo de Reserva (5%) não é subtraído, pois é enviado junto ao montante principal
-    return receita - agesc - deducoes + boleto;
-  };
-
-  const formatCurrency = (val) => {
-    return Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const getRateiosForContract = (contratoId) => {
-    return rateios.filter(r => r.contrato_id === contratoId);
-  };
-
-  const getCondoName = (id) => {
-    const c = condominios.find(cd => cd.id === id);
-    return c ? c.nome : 'Desconhecido';
-  };
-
-  const getTotalPercentual = (contratoId) => {
-    return getRateiosForContract(contratoId).reduce((sum, r) => sum + (Number(r.percentual) || 0), 0);
-  };
-
-  const getValorTotalContrato = (c) => {
-    return (Number(c.valor_mensal) || 0) + (Number(c.aditivo_valor) || 0);
-  };
+      <div className="contracts-list">
+        {filteredContracts.length === 0 && (
+          <div className="empty-state">Nenhum contrato cadastrado.</div>
+        )}
+        {filteredContracts.map((c) => (
+          <div key={c.id} className="contract-card">
+            <div className="contract-card-header">
+              <div>
+                <strong>{c.numero}</strong> — {c.fornecedor}
+              </div>
+              <div className="contract-card-actions">
+                <button className="btn btn-small" onClick={() => openNewAditivo(c)}>+ Aditivo</button>
+                <button className="btn btn-small" onClick={() => openEditContract(c)}>Editar</button>
+                <button className="btn btn-small btn-danger" onClick={() => deleteContract(c.id)}>Excluir</button>
+              </div>
+            </div>
+            <div className="contract-card-body">
+              <div><strong>Objeto:</strong> {c.objeto || '—'}</div>
+              <div><strong>Valor Total:</strong> {formatBRL(c.valorTotal)}</div>
+              <div><strong>Vigência:</strong> {c.dataInicio || '—'} a {c.dataFim || '—'}</div>
+              <div><strong>Condomínios:</strong> {Object.keys(c.condominios || {}).filter((k) => k !== 'Todos').length}</div>
+              {c.boletoRestituicao && (
+                <div><strong>Restituição Boleto:</strong> {formatBRL(c.valorRestituicao)}</div>
+              )}
+              {(c.aditivos || []).length > 0 && (
+                <div><strong>Aditivos:</strong> {c.aditivos.length}</div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      <header className="bg-blue-900 text-white p-6 shadow-xl flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Building2 size={32} />
-          <h1 className="text-2xl font-black">SISTEMA QUANTA</h1>
-        </div>
-        <nav className="flex gap-2">
-          <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Dashboard</button>
-          <button onClick={() => setActiveTab('gerenciar')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'gerenciar' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Gerenciar</button>
-          <button onClick={() => setActiveTab('contratos')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'contratos' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Contratos</button>
+    <div className="app">
+      <header className="app-header">
+        <h1>Gestão de Contratos</h1>
+        <nav className="app-nav">
+          <button
+            className={view === 'dashboard' ? 'nav-btn active' : 'nav-btn'}
+            onClick={() => setView('dashboard')}
+          >Dashboard</button>
+          <button
+            className={view === 'contracts' ? 'nav-btn active' : 'nav-btn'}
+            onClick={() => setView('contracts')}
+          >Contratos</button>
         </nav>
       </header>
 
-      <main className="max-w-7xl mx-auto p-8">
-        {loading ? <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-blue-900" size={48} /></div> : (
-          activeTab === 'dashboard' ? (
-            <div>
-              <div className="mb-6 p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                <p className="text-sm text-blue-800 font-bold">
-                  <TrendingDown size={16} className="inline mr-1" />
-                  Valor Líquido de Repasse = Receita Bruta − Taxa AGESC (4,5%) − Deduções de Contratos (Rateio) + R$ 3,00 (Restituição Boleto - Cortesia)
-                </p>
-                <p className="text-xs text-blue-600 mt-1 flex items-center gap-1"><Info size={12}/> O Fundo de Reserva (5%) está incluso no montante total enviado ao condomínio.</p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                {condominios.map(c => {
-                  const liquido = calcularValorLiquido(c);
-                  const receita = calcularReceita(c);
-                  const agesc = calcularAGESC(c);
-                  const fundo = calcularFundoReserva(c);
-                  const deducoes = calcularDeducoesContratos(c.id);
-                  const boleto = BOLETO_FEE;
-                  return (
-                    <div key={c.id} onClick={() => setSelectedCondo(c)} className="cursor-pointer bg-white rounded-3xl shadow-sm border p-6 hover:shadow-xl transition-all group">
-                      <div className="flex justify-between items-start mb-4">
-                        <h3 className="font-black text-xl text-blue-900 group-hover:text-blue-600">{c.nome}</h3>
-                        {c.possui_elevadores && <ArrowUpCircle className="text-orange-500" size={20} />}
-                      </div>
-                      <p className="text-slate-500 text-sm flex items-center gap-1 mt-1"><MapPin size={14}/> {c.endereco || 'Brasília, DF'}</p>
-                      <div className="mt-4 p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
-                        <p className="text-[10px] font-black text-emerald-600 uppercase">Taxa Unitária (0,905)</p>
-                        <p className="text-2xl font-black text-emerald-700">R$ {formatCurrency(calcularTaxa(c))}</p>
-                      </div>
-                      <div className="mt-3 p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                        <p className="text-[10px] font-black text-blue-600 uppercase">Receita Bruta</p>
-                        <p className="text-xl font-black text-blue-700">R$ {formatCurrency(receita)}</p>
-                      </div>
-                      <div className="mt-3 space-y-1 text-xs text-slate-500">
-                        <div className="flex justify-between items-center bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
-                          <span className="font-black text-amber-700">− Taxa AGESC (4,5%)</span>
-                          <span className="font-bold text-amber-700">R$ {formatCurrency(agesc)}</span>
-                        </div>
-                        <div className="flex justify-between items-center bg-slate-100 border border-slate-200 rounded-lg px-2 py-1">
-                          <span className="font-black text-slate-600">Fundo de Reserva (5%)</span>
-                          <span className="font-bold text-slate-600">R$ {formatCurrency(fundo)} <span className="text-[9px] uppercase ml-1 opacity-70">[Incluso]</span></span>
-                        </div>
-                        <div className="flex justify-between"><span>− Deduções Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(deducoes)}</span></div>
-                        <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
-                          <span className="font-black text-emerald-700">+ Restituição Boleto (Cortesia)</span>
-                          <span className="font-bold text-emerald-700">R$ {formatCurrency(boleto)}</span>
-                        </div>
-                      </div>
-                      <div className="mt-3 p-4 bg-slate-900 rounded-2xl">
-                        <p className="text-[10px] font-black text-white uppercase">Valor Líquido de Repasse</p>
-                        <p className={`text-2xl font-black ${liquido >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>R$ {formatCurrency(liquido)}</p>
-                      </div>
-                      <p className="text-center text-[10px] text-slate-400 mt-4 font-bold uppercase tracking-widest">Clique para ver detalhes</p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : activeTab === 'contratos' ? (
-            <div className="max-w-5xl mx-auto space-y-10">
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-                <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-900">
-                  {editingContractId ? <Pencil size={24}/> : <PlusCircle size={24}/>}
-                  {editingContractId ? 'EDITAR CONTRATO' : 'NOVO CONTRATO'}
-                </h2>
-                <form onSubmit={handleContractSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Nº Contrato</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.numero_contrato} onChange={e => setContractForm({...contractForm, numero_contrato: e.target.value})} required /></div>
-                  <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Empresa Contratada</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.empresa_contratada} onChange={e => setContractForm({...contractForm, empresa_contratada: e.target.value})} required /></div>
-                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Valor Mensal (R$)</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900" value={contractForm.valor_mensal} onChange={e => setContractForm({...contractForm, valor_mensal: e.target.value})} required /></div>
-                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Prazo Início</label><input type="date" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.prazo_inicio} onChange={e => setContractForm({...contractForm, prazo_inicio: e.target.value})} /></div>
-                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Prazo Fim</label><input type="date" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.prazo_fim} onChange={e => setContractForm({...contractForm, prazo_fim: e.target.value})} /></div>
-                  <div className="md:col-span-3"><label className="text-xs font-black text-slate-400 uppercase ml-1">Link PDF do Contrato</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.link_pdf} onChange={e => setContractForm({...contractForm, link_pdf: e.target.value})} placeholder="https://..." /></div>
-
-                  <div className="md:col-span-3 flex items-center gap-3 p-4 bg-slate-100 rounded-xl">
-                    <input type="checkbox" id="adit" checked={contractForm.tem_aditivo} onChange={e => setContractForm({...contractForm, tem_aditivo: e.target.checked})} className="w-5 h-5 text-blue-600" />
-                    <label htmlFor="adit" className="font-bold text-blue-900">Possui Aditivo?</label>
-                  </div>
-
-                  {contractForm.tem_aditivo && (
-                    <>
-                      <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Descrição do Aditivo</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.aditivo_descricao} onChange={e => setContractForm({...contractForm, aditivo_descricao: e.target.value})} placeholder="Ex: Prorrogação de 12 meses" /></div>
-                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Valor Aditivo (R$)</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900" value={contractForm.aditivo_valor} onChange={e => setContractForm({...contractForm, aditivo_valor: e.target.value})} /></div>
-                    </>
-                  )}
-
-                  <div className="md:col-span-3 flex gap-4">
-                    <button disabled={savingContract} className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all">
-                      {savingContract ? <Loader2 className="animate-spin mx-auto" /> : (editingContractId ? 'SALVAR ALTERAÇÕES' : 'SALVAR CONTRATO')}
-                    </button>
-                    {editingContractId && <button type="button" onClick={() => {setEditingContractId(null); setContractForm(INITIAL_CONTRACT_FORM)}} className="bg-slate-200 text-slate-600 px-8 rounded-2xl font-black">CANCELAR</button>}
-                  </div>
-                </form>
-              </div>
-
-              <div className="space-y-4">
-                {contratos.length === 0 && (
-                  <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-12 text-center text-slate-400 font-bold">
-                    Nenhum contrato cadastrado. Crie o primeiro acima.
-                  </div>
-                )}
-                {contratos.map(ct => {
-                  const totalPct = getTotalPercentual(ct.id);
-                  const contractRateios = getRateiosForContract(ct.id);
-                  const isExpanded = expandedContract === ct.id;
-                  return (
-                    <div key={ct.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                      <div className="p-6">
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <FileText size={20} className="text-blue-900" />
-                              <h3 className="font-black text-lg text-blue-900">Contrato {ct.numero_contrato}</h3>
-                              {ct.tem_aditivo && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-black uppercase">Aditivo</span>}
-                            </div>
-                            <p className="text-slate-600 font-bold text-sm">{ct.empresa_contratada}</p>
-                            <div className="flex flex-wrap gap-4 mt-3 text-xs text-slate-500">
-                              <span className="flex items-center gap-1"><DollarSign size={14}/> Valor: <strong className="text-blue-900">R$ {formatCurrency(getValorTotalContrato(ct))}</strong></span>
-                              {ct.prazo_inicio && <span className="flex items-center gap-1"><Calendar size={14}/> {ct.prazo_inicio} → {ct.prazo_fim || '—'}</span>}
-                              {ct.link_pdf?.startsWith('http') && <a href={ct.link_pdf} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-blue-600 font-bold underline"><Link2 size={14}/> PDF</a>}
-                            </div>
-                            {ct.tem_aditivo && ct.aditivo_descricao && (
-                              <p className="text-xs text-amber-600 mt-2"><strong>Aditivo:</strong> {ct.aditivo_descricao} {ct.aditivo_valor ? `(+R$ ${formatCurrency(ct.aditivo_valor)})` : ''}</p>
-                            )}
-                            <div className="mt-3 flex items-center gap-2">
-                              <Percent size={14} className="text-slate-400" />
-                              <span className={`text-xs font-black ${totalPct === 100 ? 'text-emerald-600' : 'text-red-500'}`}>Rateio: {totalPct}%</span>
-                              <span className="text-xs text-slate-400">({contractRateios.length} condomínio(s))</span>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <button onClick={() => handleEditContract(ct)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl transition-all"><Pencil size={20}/></button>
-                            <button onClick={() => handleDeleteContract(ct.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={20}/></button>
-                            <button onClick={() => setExpandedContract(isExpanded ? null : ct.id)} className="text-slate-400 p-2 hover:bg-slate-100 rounded-xl transition-all">
-                              {isExpanded ? <ChevronDown size={20}/> : <ChevronRight size={20}/>}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="border-t border-slate-100 bg-slate-50 p-6">
-                          <h4 className="text-sm font-black text-slate-700 uppercase mb-4 flex items-center gap-2"><Percent size={16}/> Rateio por Condomínio</h4>
-                          {contractRateios.length > 0 ? (
-                            <div className="space-y-2 mb-4">
-                              {contractRateios.map(r => (
-                                <div key={r.id} className="flex items-center justify-between bg-white rounded-xl p-3 border border-slate-100">
-                                  <div className="flex items-center gap-3">
-                                    <Building2 size={16} className="text-blue-600" />
-                                    <span className="font-bold text-sm text-slate-700">{getCondoName(r.condominio_id)}</span>
-                                  </div>
-                                  <div className="flex items-center gap-4">
-                                    <span className="font-black text-blue-900">{Number(r.percentual).toLocaleString('pt-BR')}%</span>
-                                    <span className="text-xs text-slate-500">R$ {formatCurrency(getValorTotalContrato(ct) * (Number(r.percentual) || 0) / 100)}</span>
-                                    <button onClick={() => handleDeleteRateio(r.id)} className="text-red-400 p-1 hover:bg-red-50 rounded-lg"><Trash2 size={16}/></button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-slate-400 mb-4">Nenhum rateio cadastrado para este contrato.</p>
-                          )}
-
-                          <div className="flex flex-wrap gap-3 items-end bg-white rounded-xl p-4 border border-slate-200">
-                            <div className="flex-1 min-w-[200px]">
-                              <label className="text-xs font-black text-slate-400 uppercase ml-1">Condomínio</label>
-                              <select className="w-full bg-slate-50 border-none rounded-xl p-3 mt-1" value={rateioForm.condominio_id} onChange={e => setRateioForm({...rateioForm, condominio_id: e.target.value})}>
-                                <option value="">Selecione...</option>
-                                {condominios.map(cd => (
-                                  <option key={cd.id} value={cd.id}>{cd.nome}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="w-32">
-                              <label className="text-xs font-black text-slate-400 uppercase ml-1">Percentual (%)</label>
-                              <input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-3 mt-1" value={rateioForm.percentual} onChange={e => setRateioForm({...rateioForm, percentual: e.target.value})} placeholder="Ex: 30" />
-                            </div>
-                            <button type="button" disabled={savingRateio} onClick={() => handleRateioSubmit(ct.id)} className="bg-blue-900 text-white px-6 py-3 rounded-xl font-black hover:bg-blue-800 transition-all">
-                              {savingRateio ? <Loader2 className="animate-spin" size={18}/> : 'ADICIONAR'}
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="max-w-5xl mx-auto space-y-10">
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-                <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-900">
-                  {editingId ? <Pencil size={24}/> : <PlusCircle size={24}/>}
-                  {editingId ? 'EDITAR CONDOMÍNIO' : 'NOVO CADASTRO'}
-                </h2>
-                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Nome</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} required /></div>
-                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">CNPJ</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.cnpj} onChange={e => setForm({...form, cnpj: e.target.value})} /></div>
-                  <div className="md:col-span-3"><label className="text-xs font-black text-slate-400 uppercase ml-1">Endereço</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.endereco} onChange={e => setForm({...form, endereco: e.target.value})} /></div>
-
-                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd PNR</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.qtd_pnr} onChange={e => setForm({...form, qtd_pnr: e.target.value})} required /></div>
-                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd Civis</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.qtd_civis} onChange={e => setForm({...form, qtd_civis: e.target.value})} required /></div>
-                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Despesa Estimada</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900" value={form.despesa_estimada} onChange={e => setForm({...form, despesa_estimada: e.target.value})} required /></div>
-
-                  <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Dados Bancários</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.dados_bancarios} onChange={e => setForm({...form, dados_bancarios: e.target.value})} /></div>
-                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Saldo Fundo Reserva</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.saldo_fundo_reserva} onChange={e => setForm({...form, saldo_fundo_reserva: e.target.value})} /></div>
-
-                  <div className="md:col-span-3"><label className="text-xs font-black text-slate-400 uppercase ml-1">Projetos de Incêndio (Link)</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.projetos_incendio} onChange={e => setForm({...form, projetos_incendio: e.target.value})} placeholder="https://..." /></div>
-
-                  <div className="md:col-span-3 flex items-center gap-3 p-4 bg-slate-100 rounded-xl">
-                    <input type="checkbox" id="elev" checked={form.possui_elevadores} onChange={e => setForm({...form, possui_elevadores: e.target.checked})} className="w-5 h-5 text-blue-600" />
-                    <label htmlFor="elev" className="font-bold text-blue-900">Possui Elevadores?</label>
-                  </div>
-
-                  {form.possui_elevadores && (
-                    <>
-                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd Total</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.qtd_elevadores} onChange={e => setForm({...form, qtd_elevadores: e.target.value})} /></div>
-                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Em Operação</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.elevadores_operacao} onChange={e => setForm({...form, elevadores_operacao: e.target.value})} /></div>
-                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Em Manutenção</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.elevadores_manutencao} onChange={e => setForm({...form, elevadores_manutencao: e.target.value})} /></div>
-                      <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Empresa Responsável</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.empresa_elevadores} onChange={e => setForm({...form, empresa_elevadores: e.target.value})} /></div>
-                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Status Manutenção</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.status_manutencao} onChange={e => setForm({...form, status_manutencao: e.target.value})} placeholder="Ex: Em dia" /></div>
-                    </>
-                  )}
-
-                  <div className="md:col-span-3 flex gap-4">
-                    <button disabled={saving} className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all">
-                      {saving ? <Loader2 className="animate-spin mx-auto" /> : (editingId ? 'SALVAR ALTERAÇÕES' : 'SALVAR CONDOMÍNIO')}
-                    </button>
-                    {editingId && <button type="button" onClick={() => {setEditingId(null); setForm(INITIAL_FORM)}} className="bg-slate-200 text-slate-600 px-8 rounded-2xl font-black">CANCELAR</button>}
-                  </div>
-                </form>
-              </div>
-              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <table className="w-full text-left border-collapse">
-                  <tbody className="divide-y divide-slate-100">
-                    {condominios.map(c => (
-                      <tr key={c.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-6 font-bold text-slate-700">{c.nome}</td>
-                        <td className="p-6 text-right flex justify-end gap-2">
-                          <button onClick={() => handleEdit(c)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl transition-all"><Pencil size={20}/></button>
-                          <button onClick={async () => { if(confirm('Excluir?')) { await supabase.from('condominios').delete().eq('id', c.id); fetchCondominios(); } }} className="text-red-400 p-2 hover:bg-red-50 rounded-xl transition-all"><Trash2 size={20}/></button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )
-        )}
+      <main className="app-main">
+        {view === 'dashboard' ? renderDashboard() : renderContracts()}
       </main>
 
-      {selectedCondo && (
-        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSelectedCondo(null)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="bg-blue-900 p-6 text-white flex justify-between items-center shrink-0">
-              <h2 className="text-xl font-black flex items-center gap-2"><Building2 /> {selectedCondo.nome}</h2>
-              <button onClick={() => setSelectedCondo(null)} className="p-2 hover:bg-white/10 rounded-full"><X /></button>
-            </div>
-            <div className="p-8 pb-10 grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 overflow-y-auto custom-scrollbar">
-              <div><p className="text-[10px] font-black text-slate-400 uppercase">CNPJ</p><p className="font-bold">{selectedCondo.cnpj || '—'}</p></div>
-              <div><p className="text-[10px] font-black text-slate-400 uppercase">Endereço</p><p className="font-bold">{selectedCondo.endereco || '—'}</p></div>
-              <div><p className="text-[10px] font-black text-slate-400 uppercase">Dados Bancários</p><p className="font-bold">{selectedCondo.dados_bancarios || '—'}</p></div>
-              <div><p className="text-[10px] font-black text-slate-400 uppercase">Saldo Fundo Reserva</p><p className="font-bold text-emerald-600">R$ {Number(selectedCondo.saldo_fundo_reserva || 0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</p></div>
-
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <p className="text-[10px] font-black text-slate-400 uppercase">PNR / Civis</p>
-                <p className="font-bold">{selectedCondo.qtd_pnr} / {selectedCondo.qtd_civis}</p>
-              </div>
-              <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
-                <p className="text-[10px] font-black text-emerald-600 uppercase">Taxa Unitária</p>
-                <p className="font-bold text-emerald-700">R$ {formatCurrency(calcularTaxa(selectedCondo))}</p>
-              </div>
-
-              <div className="md:col-span-2 border-t pt-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Elevadores</p>
-                <p className="font-bold">{selectedCondo.possui_elevadores ? `Sim (${selectedCondo.qtd_elevadores} total) | Operação: ${selectedCondo.elevadores_operacao} | Manutenção: ${selectedCondo.elevadores_manutencao}` : 'Não possui'}</p>
-                <p className="text-xs mt-1">Empresa: <span className="font-bold text-blue-600">{selectedCondo.empresa_elevadores || '—'}</span> | Status: <span className="font-bold text-blue-600">{selectedCondo.status_manutencao || '—'}</span></p>
-              </div>
-              <div className="md:col-span-2 border-t pt-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Projetos de Incêndio / Observações</p>
-                <div className="bg-slate-50 p-4 rounded-xl text-sm">
-                  {selectedCondo.projetos_incendio?.startsWith('http') ? (
-                    <a href={selectedCondo.projetos_incendio} target="_blank" rel="noreferrer" className="text-blue-600 font-bold underline flex items-center gap-1">Abrir Link Externo <ExternalLink size={14}/></a>
-                  ) : (
-                    <p>{selectedCondo.projetos_incendio || 'Nenhuma observação cadastrada.'}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="md:col-span-2 border-t pt-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Ficha Técnica Financeira</p>
-                <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-slate-500">Receita Bruta</span><span className="font-bold text-blue-700">R$ {formatCurrency(calcularReceita(selectedCondo))}</span></div>
-                  <div className="flex justify-between items-center bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
-                    <span className="font-black text-amber-700">− Taxa AGESC (4,5%)</span>
-                    <span className="font-bold text-amber-700">R$ {formatCurrency(calcularAGESC(selectedCondo))}</span>
-                  </div>
-                  <div className="flex justify-between items-center bg-slate-100 border border-slate-200 rounded-lg px-2 py-1">
-                    <span className="font-black text-slate-600">Fundo de Reserva (5%)</span>
-                    <span className="font-bold text-slate-600">R$ {formatCurrency(calcularFundoReserva(selectedCondo))} <span className="text-[9px] uppercase ml-1 opacity-70">[Incluso no Repasse]</span></span>
-                  </div>
-                  <div className="flex justify-between"><span className="text-slate-500">− Deduções de Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(calcularDeducoesContratos(selectedCondo.id))}</span></div>
-                  <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
-                    <span className="font-black text-emerald-700">+ Restituição Boleto (Cortesia)</span>
-                    <span className="font-bold text-emerald-700">R$ {formatCurrency(BOLETO_FEE)}</span>
-                  </div>
-                  <div className="flex justify-between border-t pt-2"><span className="font-black text-slate-700">Valor Líquido de Repasse</span><span className={`font-black ${calcularValorLiquido(selectedCondo) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>R$ {formatCurrency(calcularValorLiquido(selectedCondo))}</span></div>
-                </div>
-              </div>
-            </div>
-            <div className="p-6 bg-slate-50 flex justify-end shrink-0"><button onClick={() => setSelectedCondo(null)} className="bg-blue-900 text-white px-8 py-3 rounded-xl font-black">FECHAR</button></div>
-          </div>
-        </div>
-      )}
+      {renderModal()}
     </div>
   );
 }

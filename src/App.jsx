@@ -12,6 +12,7 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const BOLETO_FEE = 3.00;
+const AGESC_FEE_RATE = 0.045;
 const FUNDO_RESERVA_RATE = 0.05;
 
 const INITIAL_FORM = {
@@ -275,15 +276,21 @@ export default function App() {
     return (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
   };
 
-  const calcularValorLiquido = (c) => {
-    const receita = calcularReceita(c);
-    const deducoes = calcularDeducoesContratos(c.id);
-    const boleto = BOLETO_FEE * calcularTotalUnidades(c);
-    return receita - deducoes - boleto;
+  const calcularAGESC = (c) => {
+    return calcularReceita(c) * AGESC_FEE_RATE;
   };
 
   const calcularFundoReserva = (c) => {
     return calcularReceita(c) * FUNDO_RESERVA_RATE;
+  };
+
+  const calcularValorLiquido = (c) => {
+    const receita = calcularReceita(c);
+    const agesc = calcularAGESC(c);
+    const fundo = calcularFundoReserva(c);
+    const deducoes = calcularDeducoesContratos(c.id);
+    const boleto = BOLETO_FEE;
+    return receita - agesc - fundo - deducoes - boleto;
   };
 
   const formatCurrency = (val) => {
@@ -328,17 +335,18 @@ export default function App() {
               <div className="mb-6 p-4 bg-blue-50 rounded-2xl border border-blue-100">
                 <p className="text-sm text-blue-800 font-bold">
                   <TrendingDown size={16} className="inline mr-1" />
-                  Valor Líquido de Repasse = Receita Total − Deduções de Contratos (Rateio) − Taxa de Boleto (R$ 3,00/unidade)
+                  Valor Líquido de Repasse = Receita Bruta − Taxa AGESC (4,5%) − Fundo de Reserva (5%) − Deduções de Contratos (Rateio) − R$ 3,00 (Boleto fixo por condomínio)
                 </p>
-                <p className="text-xs text-blue-600 mt-1">Fundo de Reserva (5%) é apenas informativo e não deduzido do repasse.</p>
+                <p className="text-xs text-blue-600 mt-1">Taxa AGESC e Fundo de Reserva agora são deduzidos do repasse líquido.</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {condominios.map(c => {
                   const liquido = calcularValorLiquido(c);
                   const receita = calcularReceita(c);
-                  const deducoes = calcularDeducoesContratos(c.id);
-                  const boleto = BOLETO_FEE * calcularTotalUnidades(c);
+                  const agesc = calcularAGESC(c);
                   const fundo = calcularFundoReserva(c);
+                  const deducoes = calcularDeducoesContratos(c.id);
+                  const boleto = BOLETO_FEE;
                   return (
                     <div key={c.id} onClick={() => setSelectedCondo(c)} className="cursor-pointer bg-white rounded-3xl shadow-sm border p-6 hover:shadow-xl transition-all group">
                       <div className="flex justify-between items-start mb-4">
@@ -351,13 +359,20 @@ export default function App() {
                         <p className="text-2xl font-black text-emerald-700">R$ {formatCurrency(calcularTaxa(c))}</p>
                       </div>
                       <div className="mt-3 p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                        <p className="text-[10px] font-black text-blue-600 uppercase">Receita Total</p>
+                        <p className="text-[10px] font-black text-blue-600 uppercase">Receita Bruta</p>
                         <p className="text-xl font-black text-blue-700">R$ {formatCurrency(receita)}</p>
                       </div>
                       <div className="mt-3 space-y-1 text-xs text-slate-500">
+                        <div className="flex justify-between items-center bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                          <span className="font-black text-amber-700">− Taxa AGESC (4,5%)</span>
+                          <span className="font-bold text-amber-700">R$ {formatCurrency(agesc)}</span>
+                        </div>
+                        <div className="flex justify-between items-center bg-purple-50 border border-purple-100 rounded-lg px-2 py-1">
+                          <span className="font-black text-purple-700">− Fundo de Reserva (5%)</span>
+                          <span className="font-bold text-purple-700">R$ {formatCurrency(fundo)}</span>
+                        </div>
                         <div className="flex justify-between"><span>− Deduções Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(deducoes)}</span></div>
-                        <div className="flex justify-between"><span>− Taxa Boleto ({calcularTotalUnidades(c)} un.)</span><span className="font-bold text-red-500">R$ {formatCurrency(boleto)}</span></div>
-                        <div className="flex justify-between"><span className="text-slate-400">ℹ Fundo Reserva 5%</span><span className="font-bold text-slate-400">R$ {formatCurrency(fundo)}</span></div>
+                        <div className="flex justify-between"><span>− Taxa Boleto (fixa)</span><span className="font-bold text-red-500">R$ {formatCurrency(boleto)}</span></div>
                       </div>
                       <div className="mt-3 p-4 bg-slate-900 rounded-2xl">
                         <p className="text-[10px] font-black text-white uppercase">Valor Líquido de Repasse</p>
@@ -601,12 +616,19 @@ export default function App() {
               </div>
 
               <div className="md:col-span-2 border-t pt-4">
-                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Repasse Líquido</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Ficha Técnica Financeira</p>
                 <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-slate-500">Receita Total</span><span className="font-bold text-blue-700">R$ {formatCurrency(calcularReceita(selectedCondo))}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Receita Bruta</span><span className="font-bold text-blue-700">R$ {formatCurrency(calcularReceita(selectedCondo))}</span></div>
+                  <div className="flex justify-between items-center bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                    <span className="font-black text-amber-700">− Taxa AGESC (4,5%)</span>
+                    <span className="font-bold text-amber-700">R$ {formatCurrency(calcularAGESC(selectedCondo))}</span>
+                  </div>
+                  <div className="flex justify-between items-center bg-purple-50 border border-purple-100 rounded-lg px-2 py-1">
+                    <span className="font-black text-purple-700">− Fundo de Reserva (5%)</span>
+                    <span className="font-bold text-purple-700">R$ {formatCurrency(calcularFundoReserva(selectedCondo))}</span>
+                  </div>
                   <div className="flex justify-between"><span className="text-slate-500">− Deduções de Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(calcularDeducoesContratos(selectedCondo.id))}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">− Taxa de Boleto ({calcularTotalUnidades(selectedCondo)} un.)</span><span className="font-bold text-red-500">R$ {formatCurrency(BOLETO_FEE * calcularTotalUnidades(selectedCondo))}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-400">ℹ Fundo de Reserva 5% (informativo)</span><span className="font-bold text-slate-400">R$ {formatCurrency(calcularFundoReserva(selectedCondo))}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">− Taxa de Boleto (fixa por condomínio)</span><span className="font-bold text-red-500">R$ {formatCurrency(BOLETO_FEE)}</span></div>
                   <div className="flex justify-between border-t pt-2"><span className="font-black text-slate-700">Valor Líquido de Repasse</span><span className={`font-black ${calcularValorLiquido(selectedCondo) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>R$ {formatCurrency(calcularValorLiquido(selectedCondo))}</span></div>
                 </div>
               </div>

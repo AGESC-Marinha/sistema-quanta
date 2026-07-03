@@ -201,7 +201,7 @@ export default function App() {
 
   function handleEditContract(c) {
     setEditingContractId(c.id);
-    setContractForm({ 
+    setContractForm({
       numero_contrato: c.numero_contrato || '',
       empresa_contratada: c.empresa_contratada || '',
       valor_mensal: c.valor_mensal?.toString() || '',
@@ -281,7 +281,9 @@ export default function App() {
       </header>
 
       <main className="max-w-7xl mx-auto p-8">
-        {loading ? <div className="text-center py-20"><Loader2 className="animate-spin mx-auto text-blue-900" size={48} /></div> : (
+        {loading ? <div className="text-center py-20">
+          <Loader2 className="animate-spin mx-auto text-blue-900" size={48} />
+        </div> : (
           activeTab === 'dashboard' ? (
             <div>
               <div className="mb-6 p-4 bg-blue-50 rounded-2xl border border-blue-100">
@@ -450,6 +452,12 @@ export default function App() {
                   <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Despesa Estimada</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900" value={form.despesa_estimada} onChange={e => setForm({...form, despesa_estimada: e.target.value})} required /></div>
                   <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Dados Bancários</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.dados_bancarios} onChange={e => setForm({...form, dados_bancarios: e.target.value})} /></div>
                   <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Saldo Fundo Reserva</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.saldo_fundo_reserva} onChange={e => setForm({...form, saldo_fundo_reserva: e.target.value})} /></div>
+                  
+                  <div className="md:col-span-3">
+                    <label className="text-xs font-black text-slate-400 uppercase ml-1">Projetos / Observações (PPCI)</label>
+                    <textarea className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" rows="2" value={form.projetos_incendio} onChange={e => setForm({...form, projetos_incendio: e.target.value})} />
+                  </div>
+
                   <div className="md:col-span-3 flex items-center gap-3 p-4 bg-slate-100 rounded-xl">
                     <input type="checkbox" id="elev" checked={form.possui_elevadores} onChange={e => setForm({...form, possui_elevadores: e.target.checked})} className="w-5 h-5 text-blue-600" />
                     <label htmlFor="elev" className="font-bold text-blue-900">Possui Elevadores?</label>

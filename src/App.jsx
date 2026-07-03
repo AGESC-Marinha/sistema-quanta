@@ -201,7 +201,7 @@ export default function App() {
 
   function handleEditContract(c) {
     setEditingContractId(c.id);
-    setContractForm({
+    setContractForm({ 
       numero_contrato: c.numero_contrato || '',
       empresa_contratada: c.empresa_contratada || '',
       valor_mensal: c.valor_mensal?.toString() || '',
@@ -299,7 +299,7 @@ export default function App() {
                   const fundo = calcularFundoReserva(c);
                   const deducoes = calcularDeducoesContratos(c.id);
                   return (
-                    <div key={c.id} onClick={() => setSelectedCondo(c)} className="cursor-pointer bg-white rounded-3xl shadow-sm border p-6 hover:shadow-xl transition-all group">
+                    <div key={c.id} onClick={() => setSelectedCondo(c)} className="cursor-pointer bg-white rounded-3xl shadow-sm border border-blue-900 p-6 hover:shadow-xl transition-all group">
                       <div className="flex justify-between items-start mb-4">
                         <h3 className="font-black text-xl text-blue-900 group-hover:text-blue-600">{c.nome}</h3>
                         {c.possui_elevadores && <ArrowUpCircle className="text-orange-500" size={20} />}

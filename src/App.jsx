@@ -488,7 +488,7 @@ export default function App() {
                           <button onClick={() => handleDelete(c.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-xl"><Trash2 size={20}/></button>
                         </td>
                       </tr>
-                    ))} 
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -516,6 +516,11 @@ export default function App() {
                   <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
                     <p className="font-bold text-orange-800">Sim ({selectedCondo.qtd_elevadores} total)</p>
                     <p className="text-xs mt-1">Empresa: <span className="font-black">{selectedCondo.empresa_elevadores || '—'}</span></p>
+                    <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-orange-200/50">
+                      <p className="text-[10px] text-orange-700 font-bold">Em Operação: <span className="font-black">{selectedCondo.elevadores_operacao || 0}</span></p>
+                      <p className="text-[10px] text-orange-700 font-bold">Em Manutenção: <span className="font-black">{selectedCondo.elevadores_manutencao || 0}</span></p>
+                      <p className="text-[10px] text-orange-700 font-bold">Status: <span className="font-black">{selectedCondo.status_manutencao || '—'}</span></p>
+                    </div>
                   </div>
                 ) : <p className="font-bold text-slate-500">Não possui elevadores.</p>}
               </div>

@@ -4,7 +4,7 @@ import {
   Building2, MapPin, Users, DollarSign, Trash2,
   LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle,
   CreditCard, Flame, ArrowUpCircle, ExternalLink, X,
-  FileText, Calendar, Percent, Link2, ChevronDown, ChevronRight, TrendingDown, Info, CheckCircle2, AlertCircle
+  FileText, Calendar, Percent, Link2, ChevronDown, ChevronRight, TrendingDown, Info, CheckCircle2, AlertCircle, ArrowDownCircle
 } from 'lucide-react';
 
 const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
@@ -52,11 +52,73 @@ export default function App() {
   const [savingContract, setSavingContract] = useState(false);
   const [allocations, setAllocations] = useState({});
 
+  // Estados para Prestação de Contas
+  const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [balancete, setBalancete] = useState({ saldo_inicial: 0, entradas: 0, saidas: 0, saldo_final: 0 });
+  const [movimentacoes, setMovimentacoes] = useState([]);
+
   useEffect(() => {
     fetchCondominios();
     fetchContratos();
     fetchRateios();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'prestacao') {
+      fetchBalanceteData();
+      fetchMovimentacoes();
+    }
+  }, [selectedMonth, activeTab]);
+
+  async function fetchBalanceteData() {
+    try {
+      const { data, error } = await supabase
+        .from('balancetes_mensais')
+        .select('*')
+        .eq('mes', selectedMonth)
+        .maybeSingle();
+
+      if (data) {
+        setBalancete(data);
+      } else {
+        // Lógica de Transporte: Busca saldo final do mês anterior
+        const [year, month] = selectedMonth.split('-').map(Number);
+        const prevDate = new Date(year, month - 2, 1);
+        const prevMonthStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+
+        const { data: prevData } = await supabase
+          .from('balancetes_mensais')
+          .select('saldo_final')
+          .eq('mes', prevMonthStr)
+          .maybeSingle();
+
+        setBalancete({
+          saldo_inicial: prevData?.saldo_final || 0,
+          entradas: 0,
+          saidas: 0,
+          saldo_final: prevData?.saldo_final || 0
+        });
+      }
+    } catch (err) {
+      console.error('Erro ao buscar balancete:', err);
+    }
+  }
+
+  async function fetchMovimentacoes() {
+    try {
+      const { data, error } = await supabase
+        .from('movimentacoes_extrato')
+        .select('*')
+        .gte('data', `${selectedMonth}-01`)
+        .lte('data', `${selectedMonth}-31`)
+        .order('data', { ascending: true });
+
+      if (error) throw error;
+      setMovimentacoes(data || []);
+    } catch (err) {
+      console.error('Erro ao buscar movimentações:', err);
+    }
+  }
 
   async function fetchCondominios() {
     try {
@@ -212,7 +274,7 @@ export default function App() {
 
   function handleEditContract(c) {
     setEditingContractId(c.id);
-    setContractForm({ 
+    setContractForm({
       numero_contrato: c.numero_contrato || '',
       empresa_contratada: c.empresa_contratada || '',
       valor_mensal: c.valor_mensal?.toString() || '',
@@ -279,50 +341,97 @@ export default function App() {
 
   const renderPrestacao = () => (
     <div className="space-y-8">
-      <div className="bg-white p-6 rounded-3xl border border-blue-900 shadow-sm flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-xl font-black text-blue-900 flex items-center gap-2">
-          <FileText size={24} /> PRESTAÇÃO DE CONTAS
-        </h2>
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-blue-900 shadow-sm">
+        <div>
+          <h2 className="text-xl font-black text-blue-900 uppercase">Prestação de Contas</h2>
+          <p className="text-sm text-slate-500 font-bold">Consolidado Mensal de Movimentações</p>
+        </div>
         <div className="flex items-center gap-3">
-          <label className="text-xs font-black text-slate-400 uppercase">Período:</label>
-          <input type="month" className="bg-slate-50 border-none rounded-xl p-3 font-bold text-blue-900 focus:ring-2 focus:ring-blue-900 outline-none" defaultValue={new Date().toISOString().slice(0, 7)} />
+          <Calendar className="text-blue-900" size={20} />
+          <input 
+            type="month" 
+            className="bg-slate-50 border-none rounded-xl p-3 font-black text-blue-900 focus:ring-2 focus:ring-blue-900"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+          />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {[
-          { label: 'Saldo Anterior', val: 0, color: 'text-slate-600' },
-          { label: 'Entradas', val: 0, color: 'text-emerald-600' },
-          { label: 'Saídas', val: 0, color: 'text-red-500' },
-          { label: 'Saldo Atual', val: 0, color: 'text-blue-900' }
-        ].map((item, idx) => (
-          <div key={idx} className="bg-white p-6 rounded-3xl border border-blue-900 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.label}</p>
-            <p className={`text-2xl font-black mt-1 ${item.color}`}>R$ {formatCurrency(item.val)}</p>
-          </div>
-        ))}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white p-6 rounded-3xl border border-blue-900 shadow-sm">
+          <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Anterior</p>
+          <p className="text-xl font-black text-blue-900">R$ {formatCurrency(balancete.saldo_inicial)}</p>
+        </div>
+        <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-200 shadow-sm">
+          <p className="text-[10px] font-black text-emerald-600 uppercase">Entradas</p>
+          <p className="text-xl font-black text-emerald-700">R$ {formatCurrency(balancete.entradas)}</p>
+        </div>
+        <div className="bg-red-50 p-6 rounded-3xl border border-red-200 shadow-sm">
+          <p className="text-[10px] font-black text-red-600 uppercase">Saídas</p>
+          <p className="text-xl font-black text-red-700">R$ {formatCurrency(balancete.saidas)}</p>
+        </div>
+        <div className="bg-slate-900 p-6 rounded-3xl shadow-lg">
+          <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Atual</p>
+          <p className="text-xl font-black text-white">R$ {formatCurrency(balancete.saldo_final)}</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white rounded-3xl border border-blue-900 shadow-sm overflow-hidden">
-          <div className="bg-blue-900 p-4 text-white font-black uppercase tracking-wider text-sm flex items-center gap-2">
-            <CreditCard size={18} /> Movimentações MARAGESC
+        <div className="bg-white rounded-3xl border border-blue-900 overflow-hidden">
+          <div className="bg-blue-900 p-4 text-white flex items-center gap-2">
+            <Building2 size={18} />
+            <h3 className="font-black uppercase text-sm">Conta MARAGESC</h3>
           </div>
-          <div className="p-12 text-center">
-            <div className="bg-slate-50 rounded-2xl p-8 border-2 border-dashed border-slate-200">
-              <p className="text-slate-400 font-bold">Nenhuma movimentação encontrada para o período selecionado.</p>
-            </div>
+          <div className="p-4 overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="pb-2 font-black text-slate-400 uppercase">Data</th>
+                  <th className="pb-2 font-black text-slate-400 uppercase">Descrição</th>
+                  <th className="pb-2 font-black text-slate-400 uppercase text-right">Valor</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {movimentacoes.filter(m => m.conta === 'MARAGESC').map(m => (
+                  <tr key={m.id} className="hover:bg-slate-50">
+                    <td className="py-3 font-bold text-slate-600">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
+                    <td className="py-3 font-bold text-slate-800">{m.descricao}</td>
+                    <td className={`py-3 font-black text-right ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {m.tipo === 'saida' ? '-' : ''} R$ {formatCurrency(m.valor)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl border border-blue-900 shadow-sm overflow-hidden">
-          <div className="bg-blue-900 p-4 text-white font-black uppercase tracking-wider text-sm flex items-center gap-2">
-            <Building2 size={18} /> Movimentações AGESC
+        <div className="bg-white rounded-3xl border border-blue-900 overflow-hidden">
+          <div className="bg-blue-900 p-4 text-white flex items-center gap-2">
+            <Users size={18} />
+            <h3 className="font-black uppercase text-sm">Conta AGESC</h3>
           </div>
-          <div className="p-12 text-center">
-            <div className="bg-slate-50 rounded-2xl p-8 border-2 border-dashed border-slate-200">
-              <p className="text-slate-400 font-bold">Nenhuma movimentação encontrada para o período selecionado.</p>
-            </div>
+          <div className="p-4 overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="pb-2 font-black text-slate-400 uppercase">Data</th>
+                  <th className="pb-2 font-black text-slate-400 uppercase">Descrição</th>
+                  <th className="pb-2 font-black text-slate-400 uppercase text-right">Valor</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {movimentacoes.filter(m => m.conta === 'AGESC').map(m => (
+                  <tr key={m.id} className="hover:bg-slate-50">
+                    <td className="py-3 font-bold text-slate-600">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
+                    <td className="py-3 font-bold text-slate-800">{m.descricao}</td>
+                    <td className={`py-3 font-black text-right ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {m.tipo === 'saida' ? '-' : ''} R$ {formatCurrency(m.valor)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
@@ -338,11 +447,9 @@ export default function App() {
         </div>
         <nav className="flex gap-2">
           <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Dashboard</button>
+          <button onClick={() => setActiveTab('prestacao')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'prestacao' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Prestação</button>
           <button onClick={() => setActiveTab('gerenciar')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'gerenciar' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Gerenciar</button>
           <button onClick={() => setActiveTab('contratos')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'contratos' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Contratos</button>
-          <button onClick={() => setActiveTab('prestacao')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 ${activeTab === 'prestacao' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>
-            <FileText size={18} /> Prestação de Contas
-          </button>
         </nav>
       </header>
 
@@ -410,6 +517,8 @@ export default function App() {
                 })}
               </div>
             </div>
+          ) : activeTab === 'prestacao' ? (
+            renderPrestacao()
           ) : activeTab === 'contratos' ? (
             <div className="max-w-5xl mx-auto space-y-10">
               <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
@@ -502,8 +611,6 @@ export default function App() {
                 ))}
               </div>
             </div>
-          ) : activeTab === 'prestacao' ? (
-            renderPrestacao()
           ) : (
             <div className="max-w-5xl mx-auto space-y-10">
               <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">

@@ -212,7 +212,7 @@ export default function App() {
 
   function handleEditContract(c) {
     setEditingContractId(c.id);
-    setContractForm({
+    setContractForm({ 
       numero_contrato: c.numero_contrato || '',
       empresa_contratada: c.empresa_contratada || '',
       valor_mensal: c.valor_mensal?.toString() || '',
@@ -277,6 +277,58 @@ export default function App() {
   const getContractTotal = (c) => (Number(c.valor_mensal) || 0) + (Number(c.aditivo_valor) || 0);
   const currentAllocatedTotal = Object.values(allocations).filter(a => a.checked).reduce((sum, a) => sum + (Number(a.valor) || 0), 0);
 
+  const renderPrestacao = () => (
+    <div className="space-y-8">
+      <div className="bg-white p-6 rounded-3xl border border-blue-900 shadow-sm flex flex-wrap items-center justify-between gap-4">
+        <h2 className="text-xl font-black text-blue-900 flex items-center gap-2">
+          <FileText size={24} /> PRESTAÇÃO DE CONTAS
+        </h2>
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-black text-slate-400 uppercase">Período:</label>
+          <input type="month" className="bg-slate-50 border-none rounded-xl p-3 font-bold text-blue-900 focus:ring-2 focus:ring-blue-900 outline-none" defaultValue={new Date().toISOString().slice(0, 7)} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {[
+          { label: 'Saldo Anterior', val: 0, color: 'text-slate-600' },
+          { label: 'Entradas', val: 0, color: 'text-emerald-600' },
+          { label: 'Saídas', val: 0, color: 'text-red-500' },
+          { label: 'Saldo Atual', val: 0, color: 'text-blue-900' }
+        ].map((item, idx) => (
+          <div key={idx} className="bg-white p-6 rounded-3xl border border-blue-900 shadow-sm">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{item.label}</p>
+            <p className={`text-2xl font-black mt-1 ${item.color}`}>R$ {formatCurrency(item.val)}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="bg-white rounded-3xl border border-blue-900 shadow-sm overflow-hidden">
+          <div className="bg-blue-900 p-4 text-white font-black uppercase tracking-wider text-sm flex items-center gap-2">
+            <CreditCard size={18} /> Movimentações MARAGESC
+          </div>
+          <div className="p-12 text-center">
+            <div className="bg-slate-50 rounded-2xl p-8 border-2 border-dashed border-slate-200">
+              <p className="text-slate-400 font-bold">Nenhuma movimentação encontrada para o período selecionado.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-3xl border border-blue-900 shadow-sm overflow-hidden">
+          <div className="bg-blue-900 p-4 text-white font-black uppercase tracking-wider text-sm flex items-center gap-2">
+            <Building2 size={18} /> Movimentações AGESC
+          </div>
+          <div className="p-12 text-center">
+            <div className="bg-slate-50 rounded-2xl p-8 border-2 border-dashed border-slate-200">
+              <p className="text-slate-400 font-bold">Nenhuma movimentação encontrada para o período selecionado.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       <header className="bg-blue-900 text-white p-6 shadow-xl flex justify-between items-center">
@@ -288,6 +340,9 @@ export default function App() {
           <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Dashboard</button>
           <button onClick={() => setActiveTab('gerenciar')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'gerenciar' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Gerenciar</button>
           <button onClick={() => setActiveTab('contratos')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'contratos' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Contratos</button>
+          <button onClick={() => setActiveTab('prestacao')} className={`px-4 py-2 rounded-lg font-bold flex items-center gap-2 ${activeTab === 'prestacao' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>
+            <FileText size={18} /> Prestação de Contas
+          </button>
         </nav>
       </header>
 
@@ -447,6 +502,8 @@ export default function App() {
                 ))}
               </div>
             </div>
+          ) : activeTab === 'prestacao' ? (
+            renderPrestacao()
           ) : (
             <div className="max-w-5xl mx-auto space-y-10">
               <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">

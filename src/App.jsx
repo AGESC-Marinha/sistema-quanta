@@ -355,19 +355,31 @@ export default function App() {
 
   const renderPrestacao = () => (
   <div className="max-w-7xl mx-auto space-y-8">
-    {/* Cabeçalho Consolidado */}
-    <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 flex justify-between items-center">
+    {/* Cabeçalho Consolidado com Seletor Funcional */}
+    <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 flex flex-col md:flex-row justify-between items-center gap-4">
       <div>
         <h2 className="text-2xl font-black text-blue-900 uppercase">
-          Prestação de Contas - MAIO/2026
+          Prestação de Contas - {selectedMonth.split('-').reverse().join('/')}
         </h2>
         <p className="text-sm text-slate-500 font-bold">Consolidado Global das Contas MARAGESC e AGESC</p>
       </div>
-      <div className="bg-blue-50 px-4 py-2 rounded-xl border border-blue-100 flex items-center gap-2">
-        <Calendar className="text-blue-900" size={20} />
-        <span className="font-black text-blue-900">MAIO / 2026</span>
+      
+      {/* SELETOR DE MÊS FUNCIONAL */}
+      <div className="bg-blue-50 px-6 py-3 rounded-2xl border border-blue-100 flex items-center gap-4 shadow-inner">
+        <div className="flex flex-col">
+          <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Período de Referência</span>
+          <input 
+            type="month" 
+            className="bg-transparent border-none p-0 font-black text-blue-900 focus:ring-0 outline-none cursor-pointer"
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+          />
+        </div>
+        <Calendar className="text-blue-900 opacity-40" size={24} />
       </div>
     </div>
+
+    {/* O restante do layout dual (MARAGESC e AGESC) permanece idêntico... */}
 
     {/* Dualidade de Contas: Lado a Lado */}
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

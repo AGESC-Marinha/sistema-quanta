@@ -1,1431 +1,564 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import {
-  Layout, Users, FileText, PieChart, Plus, Search,
-  Building2, DollarSign, Calendar, CheckCircle2, AlertCircle,
-  Info, ArrowRight, Save, Trash2, Edit3, ExternalLink, X,
-  Flame, ArrowUpCircle, Wrench, Settings, Shield, ChevronRight
+  Building2, MapPin, Users, DollarSign, Trash2,
+  LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle,
+  CreditCard, Flame, ArrowUpCircle, ExternalLink, X,
+  FileText, Calendar, Percent, Link2, ChevronDown, ChevronRight, TrendingDown, Info, CheckCircle2, AlertCircle
 } from 'lucide-react';
 
-// =============================================================
-// SISTEMA QUANTA - VERSÃO 1.2 - 3JUL26 - ESTÁVEL
-// Gestão AGESC - 43 Condomínios
-// =============================================================
-
-// Configuração Supabase - Projeto bjeklbralayvulcuqiqe
 const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'YOUR_ANON_KEY_HERE';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJqZWtsYnJhbGF5dnVsY3VxaXFlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDA4MDQsImV4cCI6MjA5NzgxNjgwNH0.dWPW_JUp9ZimTm_g00fZgum8-NPAOhFAe1k38ZLOko0';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// =============================================================
-// CONSTANTES DE NEGÓCIO
-// =============================================================
-const TAXA_AGESC = 0.045;          // 4.5%
-const FUNDO_RESERVA = 0.05;        // 5% (Informativo - Incluso na TU)
-const FATOR_LIQUIDO = 0.905;       // 1 - 4.5% - 5% = 0.905
-const RESTITUICAO_BOLETO = 3.00;   // R$ 3,00 fixo por condomínio
-const TOTAL_CONDOMINIOS = 43;
+const BOLETO_FEE = 3.00;
+const AGESC_FEE_RATE = 0.045;
+const FUNDO_RESERVA_RATE = 0.05;
 
-const App = () => {
-  // =============================================================
-  // ESTADOS PRINCIPAIS
-  // =============================================================
+const INITIAL_FORM = {
+  nome: '', endereco: '', cnpj: '', dados_bancarios: '',
+  saldo_fundo_reserva: '', projetos_incendio: '',
+  possui_elevadores: false, qtd_elevadores: '',
+  elevadores_operacao: '', elevadores_manutencao: '',
+  empresa_elevadores: '', status_manutencao: '',
+  qtd_pnr: '', qtd_civis: '', despesa_estimada: ''
+};
+
+const INITIAL_CONTRACT_FORM = {
+  numero_contrato: '',
+  empresa_contratada: '',
+  valor_mensal: '',
+  tem_aditivo: false,
+  aditivo_descricao: '',
+  aditivo_valor: '',
+  prazo_inicio: '',
+  prazo_fim: '',
+  link_pdf: ''
+};
+
+export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [condominios, setCondominios] = useState([]);
   const [contratos, setContratos] = useState([]);
   const [rateios, setRateios] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [selectedCondo, setSelectedCondo] = useState(null);
+  const [form, setForm] = useState(INITIAL_FORM);
 
-  // Estados da Aba Gerenciar
-  const [editingCondo, setEditingCondo] = useState(null);
-  const [gerenciarSearch, setGerenciarSearch] = useState('');
-  const [savingCondo, setSavingCondo] = useState(false);
+  const [contractForm, setContractForm] = useState(INITIAL_CONTRACT_FORM);
+  const [editingContractId, setEditingContractId] = useState(null);
+  const [savingContract, setSavingContract] = useState(false);
+  const [allocations, setAllocations] = useState({});
 
-  // Estados para Formulário de Contrato
-  const [isEditingContract, setIsEditingContract] = useState(false);
-  const [currentContract, setCurrentContract] = useState({
-    empresa_contratada: '',
-    valor_mensal: 0,
-    numero_contrato: '',
-    tem_aditivo: false,
-    aditivo_valor: 0,
-    aditivo_descricao: '',
-    prazo_inicio: '',
-    prazo_fim: '',
-    link_pdf: ''
-  });
-  const [selectedCondosForContract, setSelectedCondosForContract] = useState({});
-  const [isAgescOnly, setIsAgescOnly] = useState(false);
-  const [isAllCondos, setIsAllCondos] = useState(false);
-
-  // =============================================================
-  // CARREGAMENTO DE DADOS
-  // =============================================================
   useEffect(() => {
-    fetchData();
+    fetchCondominios();
+    fetchContratos();
+    fetchRateios();
   }, []);
 
-  const fetchData = async () => {
-    setLoading(true);
+  async function fetchCondominios() {
     try {
-      const { data: condos } = await supabase.from('condominios').select('*').order('nome');
-      const { data: conts } = await supabase.from('contratos').select('*');
-      const { data: rats } = await supabase.from('rateios').select('*');
-
-      setCondominios(condos || []);
-      setContratos(conts || []);
-      setRateios(rats || []);
-    } catch (error) {
-      console.error('Erro ao carregar dados:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // =============================================================
-  // LÓGICA DE CÁLCULO FINANCEIRO
-  // =============================================================
-
-  // Deduções de contratos por condomínio
-  const getDeducoesPorCondominio = (condoId, condoNome) => {
-    let totalDeducao = 0;
-
-    // 1. Soma alocações diretas
-    const diretos = rateios.filter(r => r.condominio_id === condoId || r.condominio === condoNome);
-    totalDeducao += diretos.reduce((acc, curr) => acc + Number(curr.valor || 0), 0);
-
-    // 2. Soma contratos marcados como "Todos" (Rateio igualitário entre os 43)
-    const contratosTodos = rateios.filter(r => r.is_all_condos === true);
-    contratosTodos.forEach(r => {
-      totalDeducao += Number(r.valor || 0) / TOTAL_CONDOMINIOS;
-    });
-
-    return totalDeducao;
-  };
-
-  // Cálculo centralizado de métricas por condomínio
-  const calculateMetrics = (condo) => {
-    const receitaBruta = Number(condo.despesa_estimada || 0);
-    const unidades = (Number(condo.qtd_pnr || 0) + Number(condo.qtd_civis || 0));
-
-    // TU: (Despesa / Unidades) / 0.905
-    const taxaUnitaria = unidades > 0
-      ? (receitaBruta / unidades) / FATOR_LIQUIDO
-      : 0;
-
-    // Taxa AGESC (4.5% sobre Receita Bruta) - Deduzida do líquido
-    const taxaAgesc = receitaBruta * TAXA_AGESC;
-
-    // Fundo de Reserva (5%) - Informativo [Incluso], NÃO subtrair do líquido
-    const fundoReserva = receitaBruta * FUNDO_RESERVA;
-
-    // Deduções de Contratos
-    const deducoesContratos = getDeducoesPorCondominio(condo.id, condo.nome);
-
-    // Restituição Boleto: R$ 3,00 fixo por condomínio somado ao líquido final
-    const restituicaoBoleto = RESTITUICAO_BOLETO;
-
-    // Valor Líquido: Receita - AGESC - Contratos + Restituição Boleto
-    // (Fundo de Reserva NÃO é subtraído - é informativo/incluso)
-    const valorLiquido = receitaBruta - taxaAgesc - deducoesContratos + restituicaoBoleto;
-
-    return {
-      receitaBruta,
-      unidades,
-      taxaUnitaria,
-      taxaAgesc,
-      fundoReserva,
-      deducoesContratos,
-      restituicaoBoleto,
-      valorLiquido
-    };
-  };
-
-  // Formatação monetária
-  const formatMoeda = (valor) => {
-    return Number(valor || 0).toLocaleString('pt-BR', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
-  };
-
-  // =============================================================
-  // HANDLERS - GERENCIAR CONDOMÍNIOS
-  // =============================================================
-  const handleEditCondo = (condo) => {
-    setEditingCondo({ ...condo });
-  };
-
-  const handleCondoFieldChange = (field, value) => {
-    setEditingCondo(prev => ({
-      ...prev,
-      [field]: value
-    }));
-  };
-
-  const handleSaveCondo = async () => {
-    setSavingCondo(true);
-    try {
-      const { id, ...updateData } = editingCondo;
-      const { error } = await supabase
-        .from('condominios')
-        .update(updateData)
-        .eq('id', id);
-
+      setLoading(true);
+      const { data, error } = await supabase.from('condominios').select('*').order('nome');
       if (error) throw error;
-
-      alert('Condomínio atualizado com sucesso!');
-      setEditingCondo(null);
-      fetchData();
-    } catch (error) {
-      alert('Erro ao salvar: ' + error.message);
-    } finally {
-      setSavingCondo(false);
-    }
-  };
-
-  // =============================================================
-  // HANDLERS - CONTRATOS
-  // =============================================================
-  const handleContractSubmit = async (e) => {
-    e.preventDefault();
-
-    // 1. Cálculo do valor total do contrato (Mensal + Aditivo)
-    const totalContrato = Number(currentContract.valor_mensal || 0) + Number(currentContract.aditivo_valor || 0);
-    
-    // 2. Cálculo da soma dos rateios definidos
-    let somaRateios = 0;
-    if (isAgescOnly || isAllCondos) {
-      // Nestes casos, o sistema aloca o valor total automaticamente
-      somaRateios = totalContrato;
-    } else {
-      // Soma os valores individuais inseridos para cada condomínio selecionado
-      somaRateios = Object.values(selectedCondosForContract).reduce((acc, item) => {
-        return item.selected ? acc + Number(item.valor || 0) : acc;
-      }, 0);
-    }
-
-    // 3. Validação de Integridade Financeira (Trava)
-    // Usamos toFixed(2) para evitar problemas de precisão de ponto flutuante do JavaScript
-    if (somaRateios.toFixed(2) !== totalContrato.toFixed(2)) {
-      alert(`ERRO DE INTEGRIDADE FINANCEIRA:\n\nA soma dos rateios (R$ ${formatMoeda(somaRateios)}) não coincide com o valor total do contrato (R$ ${formatMoeda(totalContrato)}).\n\nPor favor, ajuste a distribuição dos valores antes de salvar.`);
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const { data: contractData, error: contractError } = await supabase
-        .from('contratos')
-        .upsert(currentContract)
-        .select()
-        .single();
-
-      if (contractError) throw contractError;
-
-      // Limpa rateios antigos se for edição
-      if (currentContract.id) {
-        await supabase.from('rateios').delete().eq('contrato_id', currentContract.id);
-      }
-
-      // Prepara novos rateios
-      const novosRateios = [];
-
-      if (isAgescOnly) {
-        novosRateios.push({
-          contrato_id: contractData.id,
-          valor: totalContrato,
-          is_agesc: true
-        });
-      } else if (isAllCondos) {
-        novosRateios.push({ 
-          contrato_id: contractData.id,
-          valor: totalContrato,
-          is_all_condos: true
-        });
-      } else {
-        Object.keys(selectedCondosForContract).forEach(condoId => {
-          if (selectedCondosForContract[condoId].selected) {
-            novosRateios.push({
-              contrato_id: contractData.id,
-              condominio_id: condoId,
-              valor: Number(selectedCondosForContract[condoId].valor || 0)
-            });
-          }
-        });
-      }
-
-      await supabase.from('rateios').insert(novosRateios);
-      alert('Contrato e rateios salvos com sucesso!');
-      fetchData();
-      setIsEditingContract(false);
-      resetContractForm();
-    } catch (error) {
-      alert('Erro ao salvar: ' + error.message);
+      setCondominios(data || []);
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }
 
-  const resetContractForm = () => {
-    setCurrentContract({
-      empresa_contratada: '',
-      valor_mensal: 0,
-      numero_contrato: '',
-      tem_aditivo: false,
-      aditivo_valor: 0,
-      aditivo_descricao: '',
-      prazo_inicio: '',
-      prazo_fim: '',
-      link_pdf: ''
-    });
-    setSelectedCondosForContract({});
-    setIsAgescOnly(false);
-    setIsAllCondos(false);
-  };
-
-  const handleDeleteContract = async (contractId) => {
-    if (!confirm('Deseja realmente excluir este contrato e seus rateios?')) return;
+  async function fetchContratos() {
     try {
-      await supabase.from('rateios').delete().eq('contrato_id', contractId);
-      await supabase.from('contratos').delete().eq('id', contractId);
-      alert('Contrato excluído com sucesso!');
-      fetchData();
-    } catch (error) {
-      alert('Erro ao excluir: ' + error.message);
+      const { data, error } = await supabase.from('contratos').select('*').order('numero_contrato');
+      if (error) throw error;
+      setContratos(data || []);
+    } catch (err) {
+      console.error('Erro ao buscar contratos:', err);
     }
-  };
+  }
 
-  const handleEditContract = (contract) => {
-    setCurrentContract(contract);
-    setIsEditingContract(true);
-    setIsAgescOnly(false);
-    setIsAllCondos(false);
-    setSelectedCondosForContract({});
+  async function fetchRateios() {
+    try {
+      const { data, error } = await supabase.from('rateios').select('*');
+      if (error) throw error;
+      setRateios(data || []);
+    } catch (err) {
+      console.error('Erro ao buscar rateios:', err);
+    }
+  }
 
-    const contractRateios = rateios.filter(r => r.contrato_id === contract.id);
-    contractRateios.forEach(r => {
-      if (r.is_agesc) setIsAgescOnly(true);
-      if (r.is_all_condos) setIsAllCondos(true);
-      if (r.condominio_id) {
-        setSelectedCondosForContract(prev => ({
-          ...prev,
-          [r.condominio_id]: { selected: true, valor: r.valor }
-        }));
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSaving(true);
+    const payload = {
+      ...form,
+      qtd_pnr: Number(form.qtd_pnr) || 0,
+      qtd_civis: Number(form.qtd_civis) || 0,
+      despesa_estimada: Number(form.despesa_estimada) || 0,
+      saldo_fundo_reserva: Number(form.saldo_fundo_reserva) || 0,
+      qtd_elevadores: Number(form.qtd_elevadores) || 0,
+      elevadores_operacao: Number(form.elevadores_operacao) || 0,
+      elevadores_manutencao: Number(form.elevadores_manutencao) || 0
+    };
+
+    try {
+      if (editingId) {
+        const { error } = await supabase.from('condominios').update(payload).eq('id', editingId);
+        if (error) throw error;
+        setEditingId(null);
+        alert('Atualizado com sucesso!');
+      } else {
+        const { error } = await supabase.from('condominios').insert([payload]);
+        if (error) throw error;
+        alert('Cadastrado com sucesso!');
       }
+      setForm(INITIAL_FORM);
+      fetchCondominios();
+      setActiveTab('dashboard');
+    } catch (err) {
+      alert('Erro ao salvar: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleEdit(c) {
+    setEditingId(c.id);
+    setForm({ ...c });
+    setActiveTab('gerenciar');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function handleDelete(id) {
+    if (!confirm('Tem certeza que deseja excluir este condomínio?')) return;
+    try {
+      const { error } = await supabase.from('condominios').delete().eq('id', id);
+      if (error) throw error;
+      fetchCondominios();
+    } catch (err) {
+      alert('Erro ao excluir: ' + err.message);
+    }
+  }
+
+  async function handleContractSubmit(e) {
+    e.preventDefault();
+    setSavingContract(true);
+    const contractPayload = {
+      numero_contrato: contractForm.numero_contrato,
+      empresa_contratada: contractForm.empresa_contratada,
+      valor_mensal: Number(contractForm.valor_mensal) || 0,
+      tem_aditivo: contractForm.tem_aditivo,
+      aditivo_descricao: contractForm.aditivo_descricao,
+      aditivo_valor: Number(contractForm.aditivo_valor) || 0,
+      prazo_inicio: contractForm.prazo_inicio,
+      prazo_fim: contractForm.prazo_fim,
+      link_pdf: contractForm.link_pdf
+    };
+
+    try {
+      let contractId = editingContractId;
+      if (editingContractId) {
+        const { error } = await supabase.from('contratos').update(contractPayload).eq('id', editingContractId);
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase.from('contratos').insert([contractPayload]).select();
+        if (error) throw error;
+        contractId = data[0].id;
+      }
+
+      await supabase.from('rateios').delete().eq('contrato_id', contractId);
+      const rateioInserts = Object.entries(allocations)
+        .filter(([_, data]) => data.checked)
+        .map(([id, data]) => ({
+          contrato_id: contractId,
+          condominio_id: (id !== 'agesc' && id !== 'all') ? id : null,
+          is_agesc: id === 'agesc',
+          is_all_condos: id === 'all',
+          valor: Number(data.valor) || 0
+        }));
+
+      if (rateioInserts.length > 0) {
+        const { error: rError } = await supabase.from('rateios').insert(rateioInserts);
+        if (rError) throw rError;
+      }
+
+      alert('Contrato e rateios salvos com sucesso!');
+      setContractForm(INITIAL_CONTRACT_FORM);
+      setAllocations({});
+      setEditingContractId(null);
+      fetchContratos();
+      fetchRateios();
+    } catch (err) {
+      alert('Erro ao salvar contrato: ' + err.message);
+    } finally {
+      setSavingContract(false);
+    }
+  }
+
+  function handleEditContract(c) {
+    setEditingContractId(c.id);
+    setContractForm({
+      numero_contrato: c.numero_contrato || '',
+      empresa_contratada: c.empresa_contratada || '',
+      valor_mensal: c.valor_mensal?.toString() || '',
+      tem_aditivo: c.tem_aditivo || false,
+      aditivo_descricao: c.aditivo_descricao || '',
+      aditivo_valor: c.aditivo_valor?.toString() || '',
+      prazo_inicio: c.prazo_inicio || '',
+      prazo_fim: c.prazo_fim || '',
+      link_pdf: c.link_pdf || ''
     });
+
+    const existing = rateios.filter(r => r.contrato_id === c.id);
+    const newAllocations = {};
+    existing.forEach(r => {
+      const key = r.is_agesc ? 'agesc' : (r.is_all_condos ? 'all' : r.condominio_id);
+      newAllocations[key] = { checked: true, valor: r.valor.toString() };
+    });
+    setAllocations(newAllocations);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function handleDeleteContract(id) {
+    if (!confirm('Excluir contrato?')) return;
+    try {
+      await supabase.from('rateios').delete().eq('contrato_id', id);
+      await supabase.from('contratos').delete().eq('id', id);
+      fetchContratos();
+      fetchRateios();
+    } catch (err) {
+      alert('Erro ao excluir: ' + err.message);
+    }
+  }
+
+  const calcularTaxa = (c) => {
+    const total = (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
+    if (total === 0) return 0;
+    return (Number(c.despesa_estimada) / total) / 0.905;
   };
 
-  // =============================================================
-  // RENDERIZAÇÃO - DASHBOARD
-  // =============================================================
-  const renderDashboard = () => {
-    const filteredCondos = condominios.filter(c =>
-      c.nome.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-
-    // Totais gerais
-    const totais = condominios.reduce((acc, condo) => {
-      const m = calculateMetrics(condo);
-      return {
-        receita: acc.receita + m.receitaBruta,
-        liquido: acc.liquido + m.valorLiquido,
-        deducoes: acc.deducoes + m.taxaAgesc + m.deducoesContratos,
-        unidades: acc.unidades + m.unidades
-      };
-    }, { receita: 0, liquido: 0, deducoes: 0, unidades: 0 });
-
-    return (
-      <div className="space-y-6">
-        {/* Barra de Pesquisa */}
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-            <input
-              type="text"
-              placeholder="Buscar condomínio..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div className="text-sm text-slate-500">
-            {filteredCondos.length} de {condominios.length} condomínios
-          </div>
-        </div>
-
-        {/* Resumo Geral */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-green-600 text-white rounded-2xl p-4 shadow-lg">
-            <div className="text-xs opacity-80 uppercase tracking-wide">Receita Total</div>
-            <div className="text-2xl font-bold mt-1">R$ {formatMoeda(totais.receita)}</div>
-          </div>
-          <div className="bg-blue-600 text-white rounded-2xl p-4 shadow-lg">
-            <div className="text-xs opacity-80 uppercase tracking-wide">Líquido Total</div>
-            <div className="text-2xl font-bold mt-1">R$ {formatMoeda(totais.liquido)}</div>
-          </div>
-          <div className="bg-slate-600 text-white rounded-2xl p-4 shadow-lg">
-            <div className="text-xs opacity-80 uppercase tracking-wide">Deduções Totais</div>
-            <div className="text-2xl font-bold mt-1">R$ {formatMoeda(totais.deducoes)}</div>
-          </div>
-          <div className="bg-black text-white rounded-2xl p-4 shadow-lg">
-            <div className="text-xs opacity-80 uppercase tracking-wide">Total Unidades</div>
-            <div className="text-2xl font-bold mt-1">{totais.unidades}</div>
-          </div>
-        </div>
-
-        {/* Cards dos Condomínios */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredCondos.map(condo => {
-            const m = calculateMetrics(condo);
-
-            return (
-              <div
-                key={condo.id}
-                onClick={() => setSelectedCondo(condo)}
-                className="bg-white rounded-3xl shadow-sm border-2 border-blue-900 p-5 hover:shadow-xl transition-all cursor-pointer"
-              >
-                {/* Header do Card */}
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-800">{condo.nome}</h3>
-                    <p className="text-xs text-slate-500 mt-1">
-                      {condo.qtd_pnr || 0} PNR · {condo.qtd_civis || 0} Civis · {m.unidades} Total
-                    </p>
-                  </div>
-                  {condo.possui_elevadores && (
-                    <div className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-lg">
-                      <ArrowUpCircle size={14} />
-                      {condo.qtd_elevadores || 0} Elev.
-                    </div>
-                  )}
-                </div>
-
-                {/* Box Verde - TU */}
-                <div className="bg-green-600 text-white rounded-xl p-3 mb-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase tracking-wide opacity-90">Taxa Unitária (TU)</span>
-                    <span className="text-lg font-bold">R$ {formatMoeda(m.taxaUnitaria)}</span>
-                  </div>
-                </div>
-
-                {/* Box Azul - Receita */}
-                <div className="bg-blue-600 text-white rounded-xl p-3 mb-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase tracking-wide opacity-90">Receita Bruta</span>
-                    <span className="text-lg font-bold">R$ {formatMoeda(m.receitaBruta)}</span>
-                  </div>
-                </div>
-
-                {/* Box Slate - Deduções */}
-                <div className="bg-slate-600 text-white rounded-xl p-3 mb-3 space-y-1.5">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="opacity-90">Taxa AGESC (4.5%)</span>
-                    <span>- R$ {formatMoeda(m.taxaAgesc)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="opacity-90">Fundo Reserva (5%) [Incluso]</span>
-                    <span className="opacity-60 italic">R$ {formatMoeda(m.fundoReserva)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="opacity-90">Dedução Contratos</span>
-                    <span>- R$ {formatMoeda(m.deducoesContratos)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="opacity-90">Restituição Boleto</span>
-                    <span>+ R$ {formatMoeda(m.restituicaoBoleto)}</span>
-                  </div>
-                </div>
-
-                {/* Box Preto - Líquido */}
-                <div className="bg-black text-white rounded-xl p-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs uppercase tracking-wide opacity-90">Líquido para Repasse</span>
-                    <span className="text-xl font-bold">R$ {formatMoeda(m.valorLiquido)}</span>
-                  </div>
-                </div>
-
-                {/* Link de Detalhes */}
-                <div className="mt-3 flex items-center justify-end text-sm text-blue-600 hover:text-blue-800">
-                  <span>Ver Raio-X Completo</span>
-                  <ChevronRight size={16} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {filteredCondos.length === 0 && (
-          <div className="text-center py-12 text-slate-400">
-            <Search size={48} className="mx-auto mb-4 opacity-50" />
-            <p>Nenhum condomínio encontrado.</p>
-          </div>
-        )}
-      </div>
-    );
+  const calcularReceita = (c) => {
+    const total = (Number(c.qtd_pnr) || 0) + (Number(c.qtd_civis) || 0);
+    return calcularTaxa(c) * total;
   };
 
-  // =============================================================
-  // RENDERIZAÇÃO - GERENCIAR
-  // =============================================================
-  const renderGerenciar = () => {
-    const filteredCondos = condominios.filter(c =>
-      c.nome.toLowerCase().includes(gerenciarSearch.toLowerCase())
-    );
+  const calcularDeducoesContratos = (condominioId) => {
+    const direct = rateios.filter(r => r.condominio_id === condominioId).reduce((sum, r) => sum + (Number(r.valor) || 0), 0);
+    const global = rateios.filter(r => r.is_all_condos).reduce((sum, r) => sum + ((Number(r.valor) || 0) / (condominios.length || 1)), 0);
+    return direct + global;
+  };
 
-    return (
-      <div className="flex gap-6 h-[calc(100vh-180px)]">
-        {/* Lista de Condomínios */}
-        <div className="w-1/3 flex flex-col">
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-            <input
-              type="text"
-              placeholder="Buscar condomínio..."
-              value={gerenciarSearch}
-              onChange={(e) => setGerenciarSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-          <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-            {filteredCondos.map(condo => (
-              <div
-                key={condo.id}
-                onClick={() => handleEditCondo(condo)}
-                className={`p-3 rounded-xl border cursor-pointer transition-all ${
-                  editingCondo?.id === condo.id
-                    ? 'border-blue-900 bg-blue-50 shadow-md'
-                    : 'border-slate-200 bg-white hover:border-blue-300'
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="font-semibold text-sm text-slate-800">{condo.nome}</h4>
-                    <p className="text-xs text-slate-500">
-                      {condo.qtd_pnr || 0} PNR · {condo.qtd_civis || 0} Civis
-                    </p>
-                  </div>
-                  <Edit3 size={16} className="text-slate-400" />
-                </div>
-              </div>
-            ))}
-          </div>
+  const calcularAGESC = (c) => calcularReceita(c) * AGESC_FEE_RATE;
+  const calcularFundoReserva = (c) => calcularReceita(c) * FUNDO_RESERVA_RATE;
+
+  const calcularValorLiquido = (c) => {
+    const receita = calcularReceita(c);
+    const agesc = calcularAGESC(c);
+    const deducoes = calcularDeducoesContratos(c.id);
+    return receita - agesc - deducoes + BOLETO_FEE;
+  };
+
+  const formatCurrency = (val) => Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const getContractTotal = (c) => (Number(c.valor_mensal) || 0) + (Number(c.aditivo_valor) || 0);
+  const currentAllocatedTotal = Object.values(allocations).filter(a => a.checked).reduce((sum, a) => sum + (Number(a.valor) || 0), 0);
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+      <header className="bg-blue-900 text-white p-6 shadow-xl flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          <Building2 size={32} />
+          <h1 className="text-2xl font-black">SISTEMA QUANTA</h1>
         </div>
+        <nav className="flex gap-2">
+          <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Dashboard</button>
+          <button onClick={() => setActiveTab('gerenciar')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'gerenciar' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Gerenciar</button>
+          <button onClick={() => setActiveTab('contratos')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'contratos' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Contratos</button>
+        </nav>
+      </header>
 
-        {/* Formulário de Edição */}
-        <div className="flex-1 overflow-y-auto bg-white rounded-3xl border-2 border-blue-900 p-6">
-          {!editingCondo ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400">
-              <Building2 size={48} className="mb-4 opacity-50" />
-              <p>Selecione um condomínio para editar</p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Header do Formulário */}
-              <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-                <h2 className="text-xl font-bold text-slate-800">{editingCondo.nome}</h2>
-                <button
-                  onClick={handleSaveCondo}
-                  disabled={savingCondo}
-                  className="flex items-center gap-2 bg-blue-900 text-white px-4 py-2 rounded-xl hover:bg-blue-800 transition-colors disabled:opacity-50"
-                >
-                  <Save size={18} />
-                  {savingCondo ? 'Salvando...' : 'Salvar Alterações'}
-                </button>
+      <main className="max-w-7xl mx-auto p-8">
+        {loading ? <div className="text-center py-20">
+          <Loader2 className="animate-spin mx-auto text-blue-900" size={48} />
+        </div> : (
+          activeTab === 'dashboard' ? (
+            <div>
+              <div className="mb-6 p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                <p className="text-sm text-blue-800 font-bold">
+                  <TrendingDown size={16} className="inline mr-1" />
+                  Valor Líquido de Repasse = Receita Bruta − Taxa AGESC (4,5%) − Deduções de Contratos (Rateio) + R$ 3,00 (Restituição Boleto - Cortesia)
+                </p>
+                <p className="text-xs text-blue-600 mt-1 flex items-center gap-1"><Info size={12}/> O Fundo de Reserva (5%) está incluso no montante total enviado ao condomínio.</p>
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {condominios.map(c => {
+                  const liquido = calcularValorLiquido(c);
+                  const receita = calcularReceita(c);
+                  const agesc = calcularAGESC(c);
+                  const fundo = calcularFundoReserva(c);
+                  const deducoes = calcularDeducoesContratos(c.id);
+                  return (
+                    <div key={c.id} onClick={() => setSelectedCondo(c)} className="cursor-pointer bg-white rounded-3xl shadow-sm border border-blue-900 p-6 hover:shadow-xl transition-all group">
+                      <div className="flex justify-between items-start mb-4">
+                        <h3 className="font-black text-xl text-blue-900 group-hover:text-blue-600">{c.nome}</h3>
+                        {c.possui_elevadores && <ArrowUpCircle className="text-orange-500" size={20} />}
+                      </div>
+                      <p className="text-slate-500 text-sm flex items-center gap-1 mt-1"><MapPin size={14}/> {c.endereco || 'Brasília, DF'}</p>
+                      
+                      <div className="mt-4 p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                        <p className="text-[10px] font-black text-emerald-600 uppercase">Taxa Unitária (0,905)</p>
+                        <p className="text-2xl font-black text-emerald-700">R$ {formatCurrency(calcularTaxa(c))}</p>
+                      </div>
 
-              {/* Seção: Identificação */}
-              <div>
-                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">
-                  <Building2 size={16} /> Identificação e Contato
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Nome</label>
-                    <input
-                      type="text"
-                      value={editingCondo.nome || ''}
-                      onChange={(e) => handleCondoFieldChange('nome', e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">CNPJ</label>
-                    <input
-                      type="text"
-                      value={editingCondo.cnpj || ''}
-                      onChange={(e) => handleCondoFieldChange('cnpj', e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-xs text-slate-500 mb-1 block">Endereço</label>
-                    <input
-                      type="text"
-                      value={editingCondo.endereco || ''}
-                      onChange={(e) => handleCondoFieldChange('endereco', e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-xs text-slate-500 mb-1 block">Dados Bancários</label>
-                    <input
-                      type="text"
-                      value={editingCondo.dados_bancarios || ''}
-                      onChange={(e) => handleCondoFieldChange('dados_bancarios', e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
+                      <div className="mt-3 p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                        <p className="text-[10px] font-black text-blue-600 uppercase">Receita Bruta</p>
+                        <p className="text-xl font-black text-blue-700">R$ {formatCurrency(receita)}</p>
+                      </div>
 
-              {/* Seção: Unidades e Financeiro */}
-              <div>
-                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">
-                  <Users size={16} /> Unidades e Financeiro
-                </h3>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Unidades PNR</label>
-                    <input
-                      type="number"
-                      value={editingCondo.qtd_pnr || 0}
-                      onChange={(e) => handleCondoFieldChange('qtd_pnr', parseInt(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Unidades Civis</label>
-                    <input
-                      type="number"
-                      value={editingCondo.qtd_civis || 0}
-                      onChange={(e) => handleCondoFieldChange('qtd_civis', parseInt(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Despesa Estimada (R$)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editingCondo.despesa_estimada || 0}
-                      onChange={(e) => handleCondoFieldChange('despesa_estimada', parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                  <div className="col-span-3">
-                    <label className="text-xs text-slate-500 mb-1 block">Saldo Fundo de Reserva (R$)</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={editingCondo.saldo_fundo_reserva || 0}
-                      onChange={(e) => handleCondoFieldChange('saldo_fundo_reserva', parseFloat(e.target.value) || 0)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
+                      <div className="mt-3 space-y-1 text-xs text-slate-500">
+                        <div className="flex justify-between items-center bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                          <span className="font-black text-amber-700">− Taxa AGESC (4,5%)</span>
+                          <span className="font-bold text-amber-700">R$ {formatCurrency(agesc)}</span>
+                        </div>
+                        <div className="flex justify-between items-center bg-slate-100 border border-slate-200 rounded-lg px-2 py-1">
+                          <span className="font-black text-slate-600">Fundo de Reserva (5%)</span>
+                          <span className="font-bold text-slate-600">R$ {formatCurrency(fundo)} <span className="text-[9px] uppercase ml-1 opacity-70">[Incluso]</span></span>
+                        </div>
+                        <div className="flex justify-between"><span>− Deduções Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(deducoes)}</span></div>
+                        <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
+                          <span className="font-black text-emerald-700">+ Restituição Boleto (Cortesia)</span>
+                          <span className="font-bold text-emerald-700">R$ {formatCurrency(BOLETO_FEE)}</span>
+                        </div>
+                      </div>
 
-              {/* Seção: PPCI - Prevenção e Combate a Incêndio */}
-              <div className="bg-orange-50 rounded-2xl p-4 border border-orange-200">
-                <h3 className="text-sm font-bold text-orange-800 uppercase tracking-wide mb-3 flex items-center gap-2">
-                  <Flame size={16} /> PPCI - Prevenção e Combate a Incêndio
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Status do PPCI</label>
-                    <select
-                      value={editingCondo.ppci_status || ''}
-                      onChange={(e) => handleCondoFieldChange('ppci_status', e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm bg-white"
-                    >
-                      <option value="">Selecione...</option>
-                      <option value="aprovado">Aprovado</option>
-                      <option value="em_tramitacao">Em Tramitação</option>
-                      <option value="vencido">Vencido</option>
-                      <option value="nao_iniciado">Não Iniciado</option>
-                      <option value="em_correcao">Em Correção</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Validade do PPCI</label>
-                    <input
-                      type="date"
-                      value={editingCondo.ppci_validade || ''}
-                      onChange={(e) => handleCondoFieldChange('ppci_validade', e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Empresa Responsável PPCI</label>
-                    <input
-                      type="text"
-                      value={editingCondo.ppci_empresa || ''}
-                      onChange={(e) => handleCondoFieldChange('ppci_empresa', e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Projeto de Incêndio (Resumo)</label>
-                    <input
-                      type="text"
-                      value={editingCondo.projetos_incendio || ''}
-                      onChange={(e) => handleCondoFieldChange('projetos_incendio', e.target.value)}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-xs text-slate-500 mb-1 block">Observações PPCI</label>
-                    <textarea
-                      value={editingCondo.ppci_observacoes || ''}
-                      onChange={(e) => handleCondoFieldChange('ppci_observacoes', e.target.value)}
-                      rows={3}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm resize-none"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Seção: Elevadores */}
-              <div className="bg-blue-50 rounded-2xl p-4 border border-blue-200">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-sm font-bold text-blue-800 uppercase tracking-wide flex items-center gap-2">
-                    <ArrowUpCircle size={16} /> Sistema de Elevadores
-                  </h3>
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={editingCondo.possui_elevadores || false}
-                      onChange={(e) => handleCondoFieldChange('possui_elevadores', e.target.checked)}
-                      className="w-4 h-4 rounded"
-                    />
-                    <span className="text-slate-600">Possui Elevadores</span>
-                  </label>
-                </div>
-
-                {editingCondo.possui_elevadores && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs text-slate-500 mb-1 block">Quantidade de Elevadores</label>
-                      <input
-                        type="number"
-                        value={editingCondo.qtd_elevadores || 0}
-                        onChange={(e) => handleCondoFieldChange('qtd_elevadores', parseInt(e.target.value) || 0)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      />
+                      <div className="mt-3 p-4 bg-slate-900 rounded-2xl">
+                        <p className="text-[10px] font-black text-white uppercase">Valor Líquido de Repasse</p>
+                        <p className={`text-2xl font-black ${liquido >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>R$ {formatCurrency(liquido)}</p>
+                      </div>
+                      <p className="text-center text-[10px] text-slate-400 mt-4 font-bold uppercase tracking-widest">Clique para ver detalhes</p>
                     </div>
-                    <div>
-                      <label className="text-xs text-slate-500 mb-1 block">Empresa de Manutenção</label>
-                      <input
-                        type="text"
-                        value={editingCondo.empresa_elevadores || ''}
-                        onChange={(e) => handleCondoFieldChange('empresa_elevadores', e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500 mb-1 block">Elevadores em Operação</label>
-                      <input
-                        type="number"
-                        value={editingCondo.elevadores_operacao || 0}
-                        onChange={(e) => handleCondoFieldChange('elevadores_operacao', parseInt(e.target.value) || 0)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-slate-500 mb-1 block">Elevadores em Manutenção</label>
-                      <input
-                        type="number"
-                        value={editingCondo.elevadores_manutencao || 0}
-                        onChange={(e) => handleCondoFieldChange('elevadores_manutencao', parseInt(e.target.value) || 0)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs text-slate-500 mb-1 block">Status de Manutenção</label>
-                      <select
-                        value={editingCondo.status_manutencao || ''}
-                        onChange={(e) => handleCondoFieldChange('status_manutencao', e.target.value)}
-                        className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm bg-white"
-                      >
-                        <option value="">Selecione...</option>
-                        <option value="em_dia">Em Dia</option>
-                        <option value="atrasada">Manutenção Atrasada</option>
-                        <option value="agendada">Manutenção Agendada</option>
-                        <option value="em_andamento">Manutenção em Andamento</option>
-                        <option value="parada">Operação Parada</option>
-                        <option value="sem_contrato">Sem Contrato de Manutenção</option>
-                      </select>
-                    </div>
-                  </div>
-                )}
-
-                {!editingCondo.possui_elevadores && (
-                  <p className="text-sm text-slate-400 italic">Marque "Possui Elevadores" para habilitar os campos.</p>
-                )}
+                  );
+                })}
               </div>
             </div>
-          )}
-        </div>
-      </div>
-    );
-  };
-
-  // =============================================================
-  // RENDERIZAÇÃO - CONTRATOS
-  // =============================================================
-  const renderContratos = () => {
-    return (
-      <div className="space-y-6">
-        {/* Botão Novo Contrato */}
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold text-slate-800">Gestão de Contratos e Rateios</h2>
-          <button
-            onClick={() => { resetContractForm(); setIsEditingContract(true); }}
-            className="flex items-center gap-2 bg-blue-900 text-white px-4 py-2 rounded-xl hover:bg-blue-800 transition-colors"
-          >
-            <Plus size={18} />
-            Novo Contrato
-          </button>
-        </div>
-
-        {/* Lista de Contratos Existentes */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {contratos.map(contract => {
-            const contractRateios = rateios.filter(r => r.contrato_id === contract.id);
-            const totalRateado = contractRateios.reduce((acc, r) => acc + Number(r.valor || 0), 0);
-
-            return (
-              <div key={contract.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-bold text-slate-800">{contract.empresa_contratada}</h3>
-                    <p className="text-xs text-slate-500">Contrato: {contract.numero_contrato || 'N/I'}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleEditContract(contract)}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      <Edit3 size={16} />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteContract(contract.id)}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-                <div className="space-y-1 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Valor Mensal:</span>
-                    <span className="font-semibold">R$ {formatMoeda(contract.valor_mensal)}</span>
-                  </div>
-                  {contract.tem_aditivo && (
-                    <div className="flex justify-between">
-                      <span className="text-slate-500">Aditivo:</span>
-                      <span className="font-semibold">R$ {formatMoeda(contract.aditivo_valor)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Total Rateado:</span>
-                    <span className="font-semibold">R$ {formatMoeda(totalRateado)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Rateios:</span>
-                    <span>{contractRateios.length}</span>
-                  </div>
-                  {contract.prazo_inicio && contract.prazo_fim && (
-                    <div className="flex justify-between text-xs text-slate-400 pt-2 border-t border-slate-100 mt-2">
-                      <span>{new Date(contract.prazo_inicio).toLocaleDateString('pt-BR')}</span>
-                      <ArrowRight size={14} />
-                      <span>{new Date(contract.prazo_fim).toLocaleDateString('pt-BR')}</span>
-                    </div>
-                  )}
-                  {contract.link_pdf && (
-                    <a
-                      href={contract.link_pdf}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-xs pt-2"
-                    >
-                      <ExternalLink size={12} /> Ver PDF do Contrato
-                    </a>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {contratos.length === 0 && !isEditingContract && (
-          <div className="text-center py-12 text-slate-400">
-            <FileText size={48} className="mx-auto mb-4 opacity-50" />
-            <p>Nenhum contrato cadastrado. Clique em "Novo Contrato" para começar.</p>
-          </div>
-        )}
-
-        {/* Formulário de Contrato */}
-        {isEditingContract && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-slate-800">
-                  {currentContract.id ? 'Editar Contrato' : 'Novo Contrato'}
+          ) : activeTab === 'contratos' ? (
+            <div className="max-w-5xl mx-auto space-y-10">
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-900">
+                  {editingContractId ? <Pencil size={24}/> : <PlusCircle size={24}/>}
+                  {editingContractId ? 'EDITAR CONTRATO' : 'NOVO CONTRATO'}
                 </h2>
-                <button
-                  onClick={() => { setIsEditingContract(false); resetContractForm(); }}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <X size={24} />
-                </button>
-              </div>
+                <form onSubmit={handleContractSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Nº Contrato</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.numero_contrato} onChange={e => setContractForm({...contractForm, numero_contrato: e.target.value})} required /></div>
+                  <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Empresa Contratada</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.empresa_contratada} onChange={e => setContractForm({...contractForm, empresa_contratada: e.target.value})} required /></div>
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Valor Mensal (R$)</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900" value={contractForm.valor_mensal} onChange={e => setContractForm({...contractForm, valor_mensal: e.target.value})} required /></div>
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Prazo Início</label><input type="date" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.prazo_inicio} onChange={e => setContractForm({...contractForm, prazo_inicio: e.target.value})} /></div>
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Prazo Fim</label><input type="date" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.prazo_fim} onChange={e => setContractForm({...contractForm, prazo_fim: e.target.value})} /></div>
+                  
+                  <div className="md:col-span-3 flex items-center gap-3 p-4 bg-slate-100 rounded-xl">
+                    <input type="checkbox" id="adit" checked={contractForm.tem_aditivo} onChange={e => setContractForm({...contractForm, tem_aditivo: e.target.checked})} className="w-5 h-5 text-blue-600" />
+                    <label htmlFor="adit" className="font-bold text-blue-900">Possui Aditivo?</label>
+                  </div>
 
-              <form onSubmit={handleContractSubmit} className="space-y-4">
-                {/* Dados do Contrato */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="col-span-2">
-                    <label className="text-xs text-slate-500 mb-1 block">Empresa Contratada *</label>
-                    <input
-                      type="text"
-                      required
-                      value={currentContract.empresa_contratada}
-                      onChange={(e) => setCurrentContract({ ...currentContract, empresa_contratada: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Número do Contrato</label>
-                    <input
-                      type="text"
-                      value={currentContract.numero_contrato}
-                      onChange={(e) => setCurrentContract({ ...currentContract, numero_contrato: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Valor Mensal (R$) *</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      required
-                      value={currentContract.valor_mensal}
-                      onChange={(e) => setCurrentContract({ ...currentContract, valor_mensal: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Prazo Início</label>
-                    <input
-                      type="date"
-                      value={currentContract.prazo_inicio || ''}
-                      onChange={(e) => setCurrentContract({ ...currentContract, prazo_inicio: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 mb-1 block">Prazo Fim</label>
-                    <input
-                      type="date"
-                      value={currentContract.prazo_fim || ''}
-                      onChange={(e) => setCurrentContract({ ...currentContract, prazo_fim: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-xs text-slate-500 mb-1 block">Link do PDF</label>
-                    <input
-                      type="url"
-                      value={currentContract.link_pdf || ''}
-                      onChange={(e) => setCurrentContract({ ...currentContract, link_pdf: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                    />
-                  </div>
-                </div>
-
-                {/* Aditivo */}
-                <div className="bg-slate-50 rounded-xl p-4">
-                  <label className="flex items-center gap-2 text-sm cursor-pointer mb-3">
-                    <input
-                      type="checkbox"
-                      checked={currentContract.tem_aditivo}
-                      onChange={(e) => setCurrentContract({ ...currentContract, tem_aditivo: e.target.checked })}
-                      className="w-4 h-4"
-                    />
-                    <span className="font-semibold text-slate-700">Possui Aditivo</span>
-                  </label>
-                  {currentContract.tem_aditivo && (
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="text-xs text-slate-500 mb-1 block">Valor do Aditivo (R$)</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={currentContract.aditivo_valor}
-                          onChange={(e) => setCurrentContract({ ...currentContract, aditivo_valor: parseFloat(e.target.value) || 0 })}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs text-slate-500 mb-1 block">Descrição do Aditivo</label>
-                        <input
-                          type="text"
-                          value={currentContract.aditivo_descricao || ''}
-                          onChange={(e) => setCurrentContract({ ...currentContract, aditivo_descricao: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                        />
-                      </div>
-                    </div>
+                  {contractForm.tem_aditivo && (
+                    <>
+                      <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Descrição do Aditivo</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={contractForm.aditivo_descricao} onChange={e => setContractForm({...contractForm, aditivo_descricao: e.target.value})} /></div>
+                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Valor Aditivo (R$)</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900" value={contractForm.aditivo_valor} onChange={e => setContractForm({...contractForm, aditivo_valor: e.target.value})} /></div>
+                    </>
                   )}
-                </div>
 
-                {/* Tipo de Rateio */}
-                <div className="bg-blue-50 rounded-xl p-4">
-                  <h3 className="text-sm font-bold text-slate-700 mb-3">Tipo de Rateio</h3>
-                  <div className="flex gap-4 mb-4">
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="radio"
-                        checked={!isAgescOnly && !isAllCondos}
-                        onChange={() => { setIsAgescOnly(false); setIsAllCondos(false); }}
-                        className="w-4 h-4"
-                      />
-                      <span>Por Condomínio</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="radio"
-                        checked={isAllCondos}
-                        onChange={() => { setIsAllCondos(true); setIsAgescOnly(false); }}
-                        className="w-4 h-4"
-                      />
-                      <span>Todos os Condomínios (Rateio Igualitário)</span>
-                    </label>
-                    <label className="flex items-center gap-2 text-sm cursor-pointer">
-                      <input
-                        type="radio"
-                        checked={isAgescOnly}
-                        onChange={() => { setIsAgescOnly(true); setIsAllCondos(false); }}
-                        className="w-4 h-4"
-                      />
-                      <span>Somente AGESC</span>
-                    </label>
-                  </div>
-
-                  {/* Seleção por Condomínio */}
-                  {!isAgescOnly && !isAllCondos && (
-                    <div className="max-h-60 overflow-y-auto space-y-2 border border-slate-200 rounded-lg p-3 bg-white">
-                      {condominios.map(condo => (
-                        <div key={condo.id} className="flex items-center gap-3">
-                          <label className="flex items-center gap-2 flex-1 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={selectedCondosForContract[condo.id]?.selected || false}
-                              onChange={(e) => {
-                                setSelectedCondosForContract(prev => ({
-                                  ...prev,
-                                  [condo.id]: {
-                                    ...prev[condo.id],
-                                    selected: e.target.checked,
-                                    valor: prev[condo.id]?.valor || 0
-                                  }
-                                }));
-                              }}
-                              className="w-4 h-4"
-                            />
-                            <span className="text-sm text-slate-700">{condo.nome}</span>
-                          </label>
-                          {selectedCondosForContract[condo.id]?.selected && (
-                            <input
-                              type="number"
-                              step="0.01"
-                              placeholder="R$"
-                              value={selectedCondosForContract[condo.id]?.valor || 0}
-                              onChange={(e) => {
-                                setSelectedCondosForContract(prev => ({
-                                  ...prev,
-                                  [condo.id]: {
-                                    ...prev[condo.id],
-                                    valor: parseFloat(e.target.value) || 0
-                                  }
-                                }));
-                              }}
-                              className="w-28 px-2 py-1 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
+                  <div className="md:col-span-3 border-t pt-6 mt-4">
+                    <h3 className="text-sm font-black text-slate-400 uppercase mb-4 flex items-center gap-2"><Percent size={18}/> Guia de Rateio Avançada</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+                      {[ {id: 'agesc', nome: 'AGESC (Sede)'}, {id: 'all', nome: 'Todos os Condomínios (Rateio Global)'} ].map(target => (
+                        <div key={target.id} className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${allocations[target.id]?.checked ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-100'}`}>
+                          <div className="flex items-center gap-3">
+                            <input type="checkbox" checked={allocations[target.id]?.checked || false} onChange={e => setAllocations({...allocations, [target.id]: { ...allocations[target.id], checked: e.target.checked, valor: allocations[target.id]?.valor || '' }})} className="w-5 h-5" />
+                            <span className="font-bold text-sm">{target.nome}</span>
+                          </div>
+                          {allocations[target.id]?.checked && (
+                            <input type="number" placeholder="Valor R$" className="w-28 bg-white border-none rounded-lg p-2 text-sm font-bold" value={allocations[target.id]?.valor || ''} onChange={e => setAllocations({...allocations, [target.id]: { ...allocations[target.id], valor: e.target.value }})} />
+                          )}
+                        </div>
+                      ))}
+                      {condominios.map(c => (
+                        <div key={c.id} className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${allocations[c.id]?.checked ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-100'}`}>
+                          <div className="flex items-center gap-3">
+                            <input type="checkbox" checked={allocations[c.id]?.checked || false} onChange={e => setAllocations({...allocations, [c.id]: { ...allocations[c.id], checked: e.target.checked, valor: allocations[c.id]?.valor || '' }})} className="w-5 h-5" />
+                            <span className="font-bold text-sm">{c.nome}</span>
+                          </div>
+                          {allocations[c.id]?.checked && (
+                            <input type="number" placeholder="Valor R$" className="w-28 bg-white border-none rounded-lg p-2 text-sm font-bold" value={allocations[c.id]?.valor || ''} onChange={e => setAllocations({...allocations, [c.id]: { ...allocations[c.id], valor: e.target.value }})} />
                           )}
                         </div>
                       ))}
                     </div>
-                  )}
 
-                  {isAllCondos && (
-                    <p className="text-sm text-slate-600">
-                      O valor total (R$ {formatMoeda(Number(currentContract.valor_mensal) + Number(currentContract.aditivo_valor || 0))})
-                      será dividido igualmente entre os {TOTAL_CONDOMINIOS} condomínios
-                      (R$ {formatMoeda((Number(currentContract.valor_mensal) + Number(currentContract.aditivo_valor || 0)) / TOTAL_CONDOMINIOS)} por condomínio).
-                    </p>
-                  )}
+                    <div className="mt-6 p-6 bg-slate-900 rounded-3xl text-white flex flex-col md:flex-row justify-between items-center gap-6">
+                      <div className="text-center md:text-left">
+                        <p className="text-[10px] font-black text-slate-400 uppercase">Total do Contrato</p>
+                        <p className="text-2xl font-black">R$ {formatCurrency(getContractTotal(contractForm))}</p>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-center md:text-right">
+                          <p className="text-[10px] font-black text-slate-400 uppercase">Total Alocado</p>
+                          <p className={`text-2xl font-black ${Math.abs(currentAllocatedTotal - getContractTotal(contractForm)) < 0.01 ? 'text-emerald-400' : 'text-amber-400'}`}>R$ {formatCurrency(currentAllocatedTotal)}</p>
+                        </div>
+                        {Math.abs(currentAllocatedTotal - getContractTotal(contractForm)) < 0.01 ? <CheckCircle2 className="text-emerald-400" size={32}/> : <AlertCircle className="text-amber-400" size={32}/>}
+                      </div>
+                    </div>
+                  </div>
 
-                  {isAgescOnly && (
-                    <p className="text-sm text-slate-600">
-                      O valor total (R$ {formatMoeda(Number(currentContract.valor_mensal) + Number(currentContract.aditivo_valor || 0))})
-                      será rateado exclusivamente como despesa da AGESC.
-                    </p>
-                  )}
-                </div>
+                  <div className="md:col-span-3 flex gap-4">
+                    <button disabled={savingContract} className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all">
+                      {savingContract ? <Loader2 className="animate-spin mx-auto" /> : (editingContractId ? 'SALVAR ALTERAÇÕES' : 'SALVAR CONTRATO')}
+                    </button>
+                    {editingContractId && <button type="button" onClick={() => {setEditingContractId(null); setContractForm(INITIAL_CONTRACT_FORM); setAllocations({})}} className="bg-slate-200 text-slate-600 px-8 rounded-2xl font-black">CANCELAR</button>}
+                  </div>
+                </form>
+              </div>
 
-                {/* Botões */}
-                <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-                  <button
-                    type="button"
-                    onClick={() => { setIsEditingContract(false); resetContractForm(); }}
-                    className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50 text-sm"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="flex items-center gap-2 bg-blue-900 text-white px-6 py-2 rounded-xl hover:bg-blue-800 text-sm disabled:opacity-50"
-                  >
-                    <Save size={16} />
-                    {loading ? 'Salvando...' : 'Salvar Contrato'}
-                  </button>
-                </div>
-              </form>
+              <div className="space-y-4">
+                {contratos.map(ct => (
+                  <div key={ct.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 flex justify-between items-center">
+                    <div>
+                      <h3 className="font-black text-blue-900">{ct.empresa_contratada} - {ct.numero_contrato}</h3>
+                      <p className="text-sm text-slate-500 font-bold">R$ {formatCurrency(getContractTotal(ct))}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleEditContract(ct)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl"><Pencil size={20}/></button>
+                      <button onClick={() => handleDeleteContract(ct.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-xl"><Trash2 size={20}/></button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="max-w-5xl mx-auto space-y-10">
+              <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+                <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-900">
+                  {editingId ? <Pencil size={24}/> : <PlusCircle size={24}/>}
+                  {editingId ? 'EDITAR CONDOMÍNIO' : 'NOVO CADASTRO'}
+                </h2>
+                <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Nome</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.nome} onChange={e => setForm({...form, nome: e.target.value})} required /></div>
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">CNPJ</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.cnpj} onChange={e => setForm({...form, cnpj: e.target.value})} /></div>
+                  <div className="md:col-span-3"><label className="text-xs font-black text-slate-400 uppercase ml-1">Endereço</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.endereco} onChange={e => setForm({...form, endereco: e.target.value})} /></div>
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd PNR</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.qtd_pnr} onChange={e => setForm({...form, qtd_pnr: e.target.value})} required /></div>
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd Civis</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.qtd_civis} onChange={e => setForm({...form, qtd_civis: e.target.value})} required /></div>
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Despesa Estimada</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900" value={form.despesa_estimada} onChange={e => setForm({...form, despesa_estimada: e.target.value})} required /></div>
+                  <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Dados Bancários</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.dados_bancarios} onChange={e => setForm({...form, dados_bancarios: e.target.value})} /></div>
+                  <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Saldo Fundo Reserva</label><input type="number" step="0.01" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.saldo_fundo_reserva} onChange={e => setForm({...form, saldo_fundo_reserva: e.target.value})} /></div>
+                  
+                  <div className="md:col-span-3">
+                    <label className="text-xs font-black text-slate-400 uppercase ml-1">Projetos / Observações (PPCI)</label>
+                    <textarea className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" rows="2" value={form.projetos_incendio} onChange={e => setForm({...form, projetos_incendio: e.target.value})} />
+                  </div>
+
+                  <div className="md:col-span-3 flex items-center gap-3 p-4 bg-slate-100 rounded-xl">
+                    <input type="checkbox" id="elev" checked={form.possui_elevadores} onChange={e => setForm({...form, possui_elevadores: e.target.checked})} className="w-5 h-5 text-blue-600" />
+                    <label htmlFor="elev" className="font-bold text-blue-900">Possui Elevadores?</label>
+                  </div>
+                  {form.possui_elevadores && (
+                    <>
+                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd Total</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.qtd_elevadores} onChange={e => setForm({...form, qtd_elevadores: e.target.value})} /></div>
+                      <div className="md:col-span-2"><label className="text-xs font-black text-slate-400 uppercase ml-1">Empresa Responsável</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.empresa_elevadores} onChange={e => setForm({...form, empresa_elevadores: e.target.value})} /></div>
+                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd em Operação</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.elevadores_operacao} onChange={e => setForm({...form, elevadores_operacao: e.target.value})} /></div>
+                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Qtd em Manutenção</label><input type="number" className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.elevadores_manutencao} onChange={e => setForm({...form, elevadores_manutencao: e.target.value})} /></div>
+                      <div><label className="text-xs font-black text-slate-400 uppercase ml-1">Status da Manutenção</label><input className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1" value={form.status_manutencao} onChange={e => setForm({...form, status_manutencao: e.target.value})} /></div>
+                    </>
+                  )}
+                  <div className="md:col-span-3 flex gap-4">
+                    <button disabled={saving} className="flex-1 bg-blue-900 text-white p-5 rounded-2xl font-black text-lg hover:bg-blue-800 transition-all">{saving ? <Loader2 className="animate-spin mx-auto" /> : (editingId ? 'SALVAR ALTERAÇÕES' : 'SALVAR CONDOMÍNIO')}</button>
+                    {editingId && <button type="button" onClick={() => {setEditingId(null); setForm(INITIAL_FORM)}} className="bg-slate-200 text-slate-600 px-8 rounded-2xl font-black">CANCELAR</button>}
+                  </div>
+                </form>
+              </div>
+              <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <tbody className="divide-y divide-slate-100">
+                    {condominios.map(c => (
+                      <tr key={c.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-6 font-bold text-slate-700">{c.nome}</td>
+                        <td className="p-6 text-right flex justify-end gap-2">
+                          <button onClick={() => handleEdit(c)} className="text-blue-600 p-2 hover:bg-blue-50 rounded-xl"><Pencil size={20}/></button>
+                          <button onClick={() => handleDelete(c.id)} className="text-red-400 p-2 hover:bg-red-50 rounded-xl"><Trash2 size={20}/></button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )
         )}
-      </div>
-    );
-  };
-
-  // =============================================================
-  // RENDERIZAÇÃO - MODAL DE DETALHES (RAIO-X COMPLETO)
-  // =============================================================
-  const renderCondoModal = () => {
-    if (!selectedCondo) return null;
-    const m = calculateMetrics(selectedCondo);
-
-    return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-          {/* Header do Modal */}
-          <div className="sticky top-0 bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between rounded-t-3xl z-10">
-            <div>
-              <h2 className="text-xl font-bold text-slate-800">{selectedCondo.nome}</h2>
-              <p className="text-sm text-slate-500">Raio-X Completo do Condomínio</p>
-            </div>
-            <button
-              onClick={() => setSelectedCondo(null)}
-              className="text-slate-400 hover:text-slate-600 p-2 rounded-lg hover:bg-slate-100"
-            >
-              <X size={24} />
-            </button>
-          </div>
-
-          <div className="p-6 space-y-6">
-            {/* Box Verde - TU */}
-            <div className="bg-green-600 text-white rounded-2xl p-4">
-              <div className="text-xs uppercase tracking-wide opacity-80 mb-1">Taxa Unitária (TU)</div>
-              <div className="text-3xl font-bold">R$ {formatMoeda(m.taxaUnitaria)}</div>
-              <div className="text-xs opacity-70 mt-1">
-                Cálculo: (R$ {formatMoeda(m.receitaBruta)} ÷ {m.unidades} un.) ÷ 0.905
-              </div>
-            </div>
-
-            {/* Identificação e Contato */}
-            <div>
-              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">
-                <Building2 size={16} /> Identificação e Contato
-              </h3>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="text-xs text-slate-400 mb-1">CNPJ</div>
-                  <div className="font-medium text-slate-700">{selectedCondo.cnpj || 'Não informado'}</div>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3">
-                  <div className="text-xs text-slate-400 mb-1">Endereço</div>
-                  <div className="font-medium text-slate-700">{selectedCondo.endereco || 'Não informado'}</div>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3 col-span-2">
-                  <div className="text-xs text-slate-400 mb-1">Dados Bancários</div>
-                  <div className="font-medium text-slate-700">{selectedCondo.dados_bancarios || 'Não informado'}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Ficha Técnica Financeira */}
-            <div>
-              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">
-                <DollarSign size={16} /> Ficha Técnica Financeira
-              </h3>
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                <div className="bg-slate-50 rounded-lg p-3 text-center">
-                  <div className="text-xs text-slate-400 mb-1">Unidades PNR</div>
-                  <div className="text-xl font-bold text-slate-700">{selectedCondo.qtd_pnr || 0}</div>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3 text-center">
-                  <div className="text-xs text-slate-400 mb-1">Unidades Civis</div>
-                  <div className="text-xl font-bold text-slate-700">{selectedCondo.qtd_civis || 0}</div>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-3 text-center">
-                  <div className="text-xs text-slate-400 mb-1">Total Unidades</div>
-                  <div className="text-xl font-bold text-slate-700">{m.unidades}</div>
-                </div>
-              </div>
-
-              {/* Detalhamento Financeiro */}
-              <div className="mt-3 space-y-2">
-                {/* Box Azul - Receita */}
-                <div className="bg-blue-600 text-white rounded-xl p-3 flex items-center justify-between">
-                  <span className="text-sm">Receita Bruta (Despesa Estimada)</span>
-                  <span className="font-bold">R$ {formatMoeda(m.receitaBruta)}</span>
-                </div>
-
-                {/* Box Slate - Deduções */}
-                <div className="bg-slate-600 text-white rounded-xl p-3 space-y-2">
-                  <div className="text-xs uppercase tracking-wide opacity-80 border-b border-white/20 pb-1 mb-1">Deduções</div>
-                  <div className="flex justify-between text-sm">
-                    <span className="opacity-90">Taxa AGESC (4.5%)</span>
-                    <span>- R$ {formatMoeda(m.taxaAgesc)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="opacity-90">Fundo Reserva (5%) [Incluso]</span>
-                    <span className="opacity-60 italic">R$ {formatMoeda(m.fundoReserva)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="opacity-90">Dedução Contratos</span>
-                    <span>- R$ {formatMoeda(m.deducoesContratos)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="opacity-90">Restituição Boleto</span>
-                    <span>+ R$ {formatMoeda(m.restituicaoBoleto)}</span>
-                  </div>
-                </div>
-
-                {/* Box Preto - Líquido */}
-                <div className="bg-black text-white rounded-xl p-4 flex items-center justify-between">
-                  <span className="text-sm uppercase tracking-wide opacity-90">Líquido para Repasse</span>
-                  <span className="text-2xl font-bold">R$ {formatMoeda(m.valorLiquido)}</span>
-                </div>
-              </div>
-
-              {/* Saldo Fundo Reserva */}
-              <div className="mt-3 bg-slate-50 rounded-lg p-3 flex items-center justify-between text-sm">
-                <span className="text-slate-500">Saldo Acumulado Fundo de Reserva</span>
-                <span className="font-semibold text-slate-700">R$ {formatMoeda(selectedCondo.saldo_fundo_reserva)}</span>
-              </div>
-            </div>
-
-            {/* PPCI - Prevenção e Combate a Incêndio */}
-            <div>
-              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">
-                <Flame size={16} /> PPCI - Prevenção e Combate a Incêndio
-              </h3>
-              <div className="bg-orange-50 rounded-xl p-4 border border-orange-200 space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Status:</span>
-                  <span className="font-medium text-slate-700">
-                    {selectedCondo.ppci_status
-                      ? selectedCondo.ppci_status.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-                      : 'Não informado'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Validade:</span>
-                  <span className="font-medium text-slate-700">
-                    {selectedCondo.ppci_validade
-                      ? new Date(selectedCondo.ppci_validade).toLocaleDateString('pt-BR')
-                      : 'Não informado'}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Empresa Responsável:</span>
-                  <span className="font-medium text-slate-700">{selectedCondo.ppci_empresa || 'Não informado'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Projeto de Incêndio:</span>
-                  <span className="font-medium text-slate-700">{selectedCondo.projetos_incendio || 'Não informado'}</span>
-                </div>
-                {selectedCondo.ppci_observacoes && (
-                  <div className="pt-2 border-t border-orange-200">
-                    <div className="text-xs text-slate-500 mb-1">Observações:</div>
-                    <div className="text-slate-700">{selectedCondo.ppci_observacoes}</div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Sistema de Elevadores */}
-            <div>
-              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wide mb-3 flex items-center gap-2">
-                <ArrowUpCircle size={16} /> Sistema de Elevadores
-              </h3>
-              {selectedCondo.possui_elevadores ? (
-                <div className="bg-blue-50 rounded-xl p-4 border border-blue-200 space-y-3 text-sm">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="flex justify-between bg-white rounded-lg p-2 px-3">
-                      <span className="text-slate-500">Quantidade:</span>
-                      <span className="font-bold text-slate-700">{selectedCondo.qtd_elevadores || 0}</span>
-                    </div>
-                    <div className="flex justify-between bg-white rounded-lg p-2 px-3">
-                      <span className="text-slate-500">Empresa:</span>
-                      <span className="font-medium text-slate-700">{selectedCondo.empresa_elevadores || 'N/I'}</span>
-                    </div>
-                    <div className="flex justify-between bg-white rounded-lg p-2 px-3">
-                      <span className="text-slate-500 flex items-center gap-1">
-                        <CheckCircle2 size={14} className="text-green-600" /> Em Operação:
-                      </span>
-                      <span className="font-bold text-green-700">{selectedCondo.elevadores_operacao || 0}</span>
-                    </div>
-                    <div className="flex justify-between bg-white rounded-lg p-2 px-3">
-                      <span className="text-slate-500 flex items-center gap-1">
-                        <Wrench size={14} className="text-orange-600" /> Em Manutenção:
-                      </span>
-                      <span className="font-bold text-orange-700">{selectedCondo.elevadores_manutencao || 0}</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between bg-white rounded-lg p-2 px-3">
-                    <span className="text-slate-500 flex items-center gap-1">
-                      <Settings size={14} /> Status de Manutenção:
-                    </span>
-                    <span className="font-medium text-slate-700">
-                      {selectedCondo.status_manutencao
-                        ? selectedCondo.status_manutencao.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-                        : 'Não informado'}
-                    </span>
-                  </div>
-                  {/* Indicador visual de status */}
-                  <div className="flex items-center gap-2 pt-2 border-t border-blue-200">
-                    {selectedCondo.status_manutencao === 'em_dia' && (
-                      <span className="flex items-center gap-1 text-xs bg-green-100 text-green-700 px-3 py-1 rounded-full">
-                        <CheckCircle2 size={12} /> Manutenção em Dia
-                      </span>
-                    )}
-                    {selectedCondo.status_manutencao === 'atrasada' && (
-                      <span className="flex items-center gap-1 text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full">
-                        <AlertCircle size={12} /> Manutenção Atrasada
-                      </span>
-                    )}
-                    {selectedCondo.status_manutencao === 'agendada' && (
-                      <span className="flex items-center gap-1 text-xs bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full">
-                        <Calendar size={12} /> Manutenção Agendada
-                      </span>
-                    )}
-                    {selectedCondo.status_manutencao === 'em_andamento' && (
-                      <span className="flex items-center gap-1 text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full">
-                        <Wrench size={12} /> Manutenção em Andamento
-                      </span>
-                    )}
-                    {selectedCondo.status_manutencao === 'parada' && (
-                      <span className="flex items-center gap-1 text-xs bg-red-100 text-red-700 px-3 py-1 rounded-full">
-                        <AlertCircle size={12} /> Operação Parada
-                      </span>
-                    )}
-                    {selectedCondo.status_manutencao === 'sem_contrato' && (
-                      <span className="flex items-center gap-1 text-xs bg-slate-200 text-slate-700 px-3 py-1 rounded-full">
-                        <AlertCircle size={12} /> Sem Contrato
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-400 italic text-center">
-                  Este condomínio não possui sistema de elevadores.
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // =============================================================
-  // RENDERIZAÇÃO PRINCIPAL
-  // =============================================================
-  if (loading && condominios.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-900 mx-auto mb-4"></div>
-          <p className="text-slate-500">Carregando Sistema Quanta...</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-slate-50">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-900 text-white p-2 rounded-xl">
-                <Layout size={24} />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-800">Sistema Quanta</h1>
-                <p className="text-xs text-slate-500">Gestão AGESC · Versão 1.2 · 3JUL26 · ESTÁVEL</p>
-              </div>
-            </div>
-
-            {/* Navegação por Abas */}
-            <nav className="flex items-center gap-1">
-              <button
-                onClick={() => setActiveTab('dashboard')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                  activeTab === 'dashboard'
-                    ? 'bg-blue-900 text-white'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <PieChart size={18} />
-                Dashboard
-              </button>
-              <button
-                onClick={() => setActiveTab('gerenciar')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                  activeTab === 'gerenciar'
-                    ? 'bg-blue-900 text-white'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <Building2 size={18} />
-                Gerenciar
-              </button>
-              <button
-                onClick={() => setActiveTab('contratos')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-                  activeTab === 'contratos'
-                    ? 'bg-blue-900 text-white'
-                    : 'text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <FileText size={18} />
-                Contratos
-              </button>
-            </nav>
-          </div>
-        </div>
-      </header>
-
-      {/* Conteúdo Principal */}
-      <main className="max-w-7xl mx-auto px-6 py-6">
-        {activeTab === 'dashboard' && renderDashboard()}
-        {activeTab === 'gerenciar' && renderGerenciar()}
-        {activeTab === 'contratos' && renderContratos()}
       </main>
 
-      {/* Modal de Detalhes */}
-      {selectedCondo && renderCondoModal()}
+      {selectedCondo && (
+        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setSelectedCondo(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-blue-900 p-6 text-white flex justify-between items-center shrink-0">
+              <h2 className="text-xl font-black flex items-center gap-2"><Building2 /> {selectedCondo.nome}</h2>
+              <button onClick={() => setSelectedCondo(null)} className="p-2 hover:bg-white/10 rounded-full"><X /></button>
+            </div>
+            <div className="p-8 pb-10 grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 overflow-y-auto custom-scrollbar">
+              <div><p className="text-[10px] font-black text-slate-400 uppercase">CNPJ</p><p className="font-bold">{selectedCondo.cnpj || '—'}</p></div>
+              <div><p className="text-[10px] font-black text-slate-400 uppercase">Endereço</p><p className="font-bold">{selectedCondo.endereco || '—'}</p></div>
+              <div><p className="text-[10px] font-black text-slate-400 uppercase">Dados Bancários</p><p className="font-bold">{selectedCondo.dados_bancarios || '—'}</p></div>
+              <div><p className="text-[10px] font-black text-slate-400 uppercase">Saldo Fundo Reserva</p><p className="font-bold text-emerald-600">R$ {formatCurrency(selectedCondo.saldo_fundo_reserva)}</p></div>
+
+              <div className="md:col-span-2 border-t pt-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Elevadores</p>
+                {selectedCondo.possui_elevadores ? (
+                  <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
+                    <p className="font-bold text-orange-800">Sim ({selectedCondo.qtd_elevadores} total)</p>
+                    <p className="text-xs mt-1">Empresa: <span className="font-black">{selectedCondo.empresa_elevadores || '—'}</span></p>
+                    <div className="grid grid-cols-3 gap-2 mt-2 pt-2 border-t border-orange-200/50">
+                      <p className="text-[10px] text-orange-700 font-bold">Em Operação: <span className="font-black">{selectedCondo.elevadores_operacao || 0}</span></p>
+                      <p className="text-[10px] text-orange-700 font-bold">Em Manutenção: <span className="font-black">{selectedCondo.elevadores_manutencao || 0}</span></p>
+                      <p className="text-[10px] text-orange-700 font-bold">Status: <span className="font-black">{selectedCondo.status_manutencao || '—'}</span></p>
+                    </div>
+                  </div>
+                ) : <p className="font-bold text-slate-500">Não possui elevadores.</p>}
+              </div>
+
+              <div className="md:col-span-2 border-t pt-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Projetos / Observações</p>
+                <div className="bg-slate-50 p-4 rounded-xl text-sm">
+                  {selectedCondo.projetos_incendio?.startsWith('http') ? (
+                    <a href={selectedCondo.projetos_incendio} target="_blank" rel="noreferrer" className="text-blue-600 font-bold underline flex items-center gap-1">Abrir Link Externo <ExternalLink size={14}/></a>
+                  ) : <p>{selectedCondo.projetos_incendio || 'Nenhuma observação.'}</p>}
+                </div>
+              </div>
+
+              <div className="md:col-span-2 border-t pt-4">
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Ficha Técnica Financeira</p>
+                <div className="bg-slate-50 p-4 rounded-xl space-y-2 text-sm">
+                  <div className="flex justify-between"><span className="text-slate-500">Receita Bruta</span><span className="font-bold text-blue-700">R$ {formatCurrency(calcularReceita(selectedCondo))}</span></div>
+                  <div className="flex justify-between items-center bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                    <span className="font-black text-amber-700">− Taxa AGESC (4,5%)</span>
+                    <span className="font-bold text-amber-700">R$ {formatCurrency(calcularAGESC(selectedCondo))}</span>
+                  </div>
+                  <div className="flex justify-between items-center bg-slate-100 border border-slate-200 rounded-lg px-2 py-1">
+                    <span className="font-black text-slate-600">Fundo de Reserva (5%)</span>
+                    <span className="font-bold text-slate-600">R$ {formatCurrency(calcularFundoReserva(selectedCondo))} <span className="text-[9px] uppercase ml-1 opacity-70">[Incluso no Repasse]</span></span>
+                  </div>
+                  <div className="flex justify-between"><span className="text-slate-500">− Deduções de Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(calcularDeducoesContratos(selectedCondo.id))}</span></div>
+                  <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
+                    <span className="font-black text-emerald-700">+ Restituição Boleto</span>
+                    <span className="font-bold text-emerald-700">R$ {formatCurrency(BOLETO_FEE)}</span>
+                  </div>
+                  <div className="flex justify-between border-t pt-2"><span className="font-black text-slate-700">Valor Líquido de Repasse</span><span className={`font-black ${calcularValorLiquido(selectedCondo) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>R$ {formatCurrency(calcularValorLiquido(selectedCondo))}</span></div>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 bg-slate-50 flex justify-end shrink-0"><button onClick={() => setSelectedCondo(null)} className="bg-blue-900 text-white px-8 py-3 rounded-xl font-black">FECHAR</button></div>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
-
-export default App;
+}

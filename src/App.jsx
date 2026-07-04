@@ -207,28 +207,7 @@ export default function App() {
     }
   }
 // --- FIM DA SUBSTITUIÇÃO ---
-
-        // 3. Buscar movimentações do mês
-        let { data: movs, error: err3 } = await supabase
-          .from('movimentacoes')
-          .select('*')
-          .eq('condominio_id', condoId)
-          .eq('mes_referencia', month)
-          .eq('conta', account)
-          .order('data', { ascending: true });
-
-        newMovimentacoes[account] = movs || [];
-      }
-
-      setBalancetes(newBalancetes);
-      setMovimentacoes(newMovimentacoes);
-    } catch (err) {
-      console.error('Erro ao buscar dados da prestação:', err);
-    } finally {
-      setLoadingPrestacao(false);
-    }
-  }
-
+      
   async function fetchCondominios() {
     try {
       setLoading(true);

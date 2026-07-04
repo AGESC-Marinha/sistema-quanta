@@ -452,7 +452,89 @@ export default function App() {
           <Calendar className="text-blue-900 opacity-40" size={24} />
         </div>
       </div>
-
+      {/* --- FORMULÁRIO DE LANÇAMENTOS MANUAIS --- */}
+      <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 mb-8">
+        <h3 className="text-lg font-black text-blue-900 uppercase mb-6 flex items-center gap-2">
+          <PlusCircle size={20} /> Novo Lançamento Manual
+        </h3>
+        <form onSubmit={handleMovSubmit} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Conta</label>
+            <select 
+              className="w-full bg-slate-50 border-none rounded-xl p-3 mt-1 font-bold text-blue-900"
+              value={movForm.conta}
+              onChange={e => setMovForm({...movForm, conta: e.target.value, categoria: ''})}
+            >
+              <option value="MARAGESC">MARAGESC</option>
+              <option value="AGESC">AGESC</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Data</label>
+            <input 
+              type="date" 
+              className="w-full bg-slate-50 border-none rounded-xl p-3 mt-1 font-bold"
+              value={movForm.data_movimento}
+              onChange={e => setMovForm({...movForm, data_movimento: e.target.value})}
+              required
+            />
+          </div>
+          <div className="lg:col-span-2">
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Descrição</label>
+            <input 
+              className="w-full bg-slate-50 border-none rounded-xl p-3 mt-1 font-bold"
+              placeholder="Ex: Pagamento Neoenergia"
+              value={movForm.descricao}
+              onChange={e => setMovForm({...movForm, descricao: e.target.value})}
+              required
+            />
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Categoria</label>
+            <select 
+              className="w-full bg-slate-50 border-none rounded-xl p-3 mt-1 font-bold text-slate-700"
+              value={movForm.categoria}
+              onChange={e => setMovForm({...movForm, categoria: e.target.value})}
+              required
+            >
+              <option value="">Selecione...</option>
+              <optgroup label="Entradas">
+                {CATEGORIAS[movForm.conta].entradas.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+              </optgroup>
+              <optgroup label="Saídas">
+                {CATEGORIAS[movForm.conta].saidas.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+              </optgroup>
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Valor (R$)</label>
+            <div className="relative">
+              <input 
+                type="number" step="0.01"
+                className="w-full bg-slate-50 border-none rounded-xl p-3 mt-1 font-black text-blue-900"
+                value={movForm.valor}
+                onChange={e => setMovForm({...movForm, valor: e.target.value})}
+                required
+              />
+              <button 
+                type="button"
+                onClick={() => setMovForm({...movForm, tipo: movForm.tipo === 'entrada' ? 'saida' : 'entrada'})}
+                className={`absolute right-2 top-2 px-2 py-1 rounded-lg text-[9px] font-black uppercase transition-colors ${movForm.tipo === 'entrada' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}
+              >
+                {movForm.tipo}
+              </button>
+            </div>
+          </div>
+          <div className="md:col-span-3 lg:col-span-6 flex justify-end mt-2">
+            <button 
+              disabled={savingMov}
+              className="bg-blue-900 text-white px-10 py-3 rounded-xl font-black hover:bg-blue-800 transition-all flex items-center gap-2 shadow-lg"
+            >
+              {savingMov ? <Loader2 className="animate-spin" size={20} /> : 'REGISTRAR LANÇAMENTO'}
+            </button>
+          </div>
+        </form>
+      </div>
       {/* Dualidade de Contas: Lado a Lado */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         

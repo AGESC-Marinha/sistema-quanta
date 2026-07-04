@@ -68,9 +68,10 @@ export default function App() {
     fetchRateios();
   }, []);
 
+  // useEffect corrigido para observar mudanças no mês e carregar dados globais ou específicos
   useEffect(() => {
-    if (activeTab === 'prestacao' && selectedCondoForPrestacao) {
-      fetchBalanceteData(selectedCondoForPrestacao.id, selectedMonth);
+    if (activeTab === 'prestacao') {
+      fetchBalanceteData(selectedCondoForPrestacao?.id || null, selectedMonth);
     }
   }, [activeTab, selectedCondoForPrestacao, selectedMonth]);
 
@@ -354,148 +355,146 @@ export default function App() {
   const currentAllocatedTotal = Object.values(allocations).filter(a => a.checked).reduce((sum, a) => sum + (Number(a.valor) || 0), 0);
 
   const renderPrestacao = () => (
-  <div className="max-w-7xl mx-auto space-y-8">
-    {/* Cabeçalho Consolidado com Seletor Funcional */}
-    <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 flex flex-col md:flex-row justify-between items-center gap-4">
-      <div>
-        <h2 className="text-2xl font-black text-blue-900 uppercase">
-          Prestação de Contas - {selectedMonth.split('-').reverse().join('/')}
-        </h2>
-        <p className="text-sm text-slate-500 font-bold">Consolidado Global das Contas MARAGESC e AGESC</p>
-      </div>
-      
-      {/* SELETOR DE MÊS FUNCIONAL */}
-      <div className="bg-blue-50 px-6 py-3 rounded-2xl border border-blue-100 flex items-center gap-4 shadow-inner">
-        <div className="flex flex-col">
-          <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Período de Referência</span>
-          <input 
-            type="month" 
-            className="bg-transparent border-none p-0 font-black text-blue-900 focus:ring-0 outline-none cursor-pointer"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-          />
+    <div className="max-w-7xl mx-auto space-y-8">
+      {/* Cabeçalho Consolidado com Seletor Funcional */}
+      <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-black text-blue-900 uppercase">
+            Prestação de Contas - {selectedMonth.split('-').reverse().join('/')}
+          </h2>
+          <p className="text-sm text-slate-500 font-bold">Consolidado Global das Contas MARAGESC e AGESC</p>
         </div>
-        <Calendar className="text-blue-900 opacity-40" size={24} />
+        
+        {/* SELETOR DE MÊS FUNCIONAL */}
+        <div className="bg-blue-50 px-6 py-3 rounded-2xl border border-blue-100 flex items-center gap-4 shadow-inner">
+          <div className="flex flex-col">
+            <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Período de Referência</span>
+            <input 
+              type="month" 
+              className="bg-transparent border-none p-0 font-black text-blue-900 focus:ring-0 outline-none cursor-pointer"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+            />
+          </div>
+          <Calendar className="text-blue-900 opacity-40" size={24} />
+        </div>
+      </div>
+
+      {/* Dualidade de Contas: Lado a Lado */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        
+        {/* COLUNA 1: CONTA MARAGESC */}
+        <div className="border-2 border-blue-900 rounded-3xl p-6 bg-white flex flex-col shadow-lg">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-2xl font-black text-blue-900 uppercase tracking-tight">MARAGESC</h3>
+            <span className="px-3 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded-full border border-emerald-200">CONTA OPERACIONAL</span>
+          </div>
+
+          {/* Mini Dashboard MARAGESC */}
+          <div className="grid grid-cols-2 gap-3 mb-8">
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+              <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Anterior</p>
+              <p className="text-lg font-black text-slate-700">R$ {formatCurrency(balancetes.MARAGESC.saldo_inicial)}</p>
+            </div>
+            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+              <p className="text-[10px] font-black text-emerald-600 uppercase">Entradas</p>
+              <p className="text-lg font-black text-emerald-700">R$ {formatCurrency(balancetes.MARAGESC.entradas)}</p>
+            </div>
+            <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
+              <p className="text-[10px] font-black text-red-600 uppercase">Saídas</p>
+              <p className="text-lg font-black text-red-700">R$ {formatCurrency(balancetes.MARAGESC.saidas)}</p>
+            </div>
+            <div className="p-4 bg-blue-900 rounded-2xl shadow-md">
+              <p className="text-[10px] font-black text-blue-200 uppercase">Saldo Atual</p>
+              <p className="text-lg font-black text-white">R$ {formatCurrency(balancetes.MARAGESC.saldo_final)}</p>
+            </div>
+          </div>
+
+          {/* Tabela de Movimentações MARAGESC */}
+          <div className="flex-1">
+            <p className="text-[10px] font-black text-slate-400 uppercase mb-3 ml-1">Extrato Operacional</p>
+            <div className="overflow-hidden rounded-2xl border border-slate-100">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-black">
+                  <tr>
+                    <th className="p-3 text-left">Data</th>
+                    <th className="p-3 text-left">Descrição</th>
+                    <th className="p-3 text-right">Valor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {movimentacoes.MARAGESC.map(m => (
+                    <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-3 text-slate-500 font-bold">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
+                      <td className="p-3 font-bold text-slate-700">{m.descricao}</td>
+                      <td className={`p-3 text-right font-black ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {m.tipo === 'entrada' ? '+' : '-'} R$ {formatCurrency(m.valor)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* COLUNA 2: CONTA AGESC */}
+        <div className="border-2 border-blue-900 rounded-3xl p-6 bg-white flex flex-col shadow-lg">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-2xl font-black text-blue-900 uppercase tracking-tight">AGESC</h3>
+            <span className="px-3 py-1 bg-blue-100 text-blue-700 text-[10px] font-black rounded-full border border-blue-200">CONTA ADMINISTRATIVA</span>
+          </div>
+
+          {/* Mini Dashboard AGESC */}
+          <div className="grid grid-cols-2 gap-3 mb-8">
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+              <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Anterior</p>
+              <p className="text-lg font-black text-slate-700">R$ {formatCurrency(balancetes.AGESC.saldo_inicial)}</p>
+            </div>
+            <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+              <p className="text-[10px] font-black text-emerald-600 uppercase">Entradas</p>
+              <p className="text-lg font-black text-emerald-700">R$ {formatCurrency(balancetes.AGESC.entradas)}</p>
+            </div>
+            <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
+              <p className="text-[10px] font-black text-red-600 uppercase">Saídas</p>
+              <p className="text-lg font-black text-red-700">R$ {formatCurrency(balancetes.AGESC.saidas)}</p>
+            </div>
+            <div className="p-4 bg-blue-900 rounded-2xl shadow-md">
+              <p className="text-[10px] font-black text-blue-200 uppercase">Saldo Atual</p>
+              <p className="text-lg font-black text-white">R$ {formatCurrency(balancetes.AGESC.saldo_final)}</p>
+            </div>
+          </div>
+
+          {/* Tabela de Movimentações AGESC */}
+          <div className="flex-1">
+            <p className="text-[10px] font-black text-slate-400 uppercase mb-3 ml-1">Extrato Administrativo</p>
+            <div className="overflow-hidden rounded-2xl border border-slate-100">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-black">
+                  <tr>
+                    <th className="p-3 text-left">Data</th>
+                    <th className="p-3 text-left">Descrição</th>
+                    <th className="p-3 text-right">Valor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {movimentacoes.AGESC.map(m => (
+                    <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-3 text-slate-500 font-bold">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
+                      <td className="p-3 font-bold text-slate-700">{m.descricao}</td>
+                      <td className={`p-3 text-right font-black ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {m.tipo === 'entrada' ? '+' : '-'} R$ {formatCurrency(m.valor)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-
-    {/* O restante do layout dual (MARAGESC e AGESC) permanece idêntico... */}
-
-    {/* Dualidade de Contas: Lado a Lado */}
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      
-      {/* COLUNA 1: CONTA MARAGESC */}
-      <div className="border-2 border-blue-900 rounded-3xl p-6 bg-white flex flex-col shadow-lg">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-2xl font-black text-blue-900 uppercase tracking-tight">MARAGESC</h3>
-          <span className="px-3 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded-full border border-emerald-200">CONTA OPERACIONAL</span>
-        </div>
-
-        {/* Mini Dashboard MARAGESC */}
-        <div className="grid grid-cols-2 gap-3 mb-8">
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-            <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Anterior</p>
-            <p className="text-lg font-black text-slate-700">R$ {formatCurrency(balancetes.MARAGESC.saldo_inicial)}</p>
-          </div>
-          <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
-            <p className="text-[10px] font-black text-emerald-600 uppercase">Entradas</p>
-            <p className="text-lg font-black text-emerald-700">R$ {formatCurrency(balancetes.MARAGESC.entradas)}</p>
-          </div>
-          <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
-            <p className="text-[10px] font-black text-red-600 uppercase">Saídas</p>
-            <p className="text-lg font-black text-red-700">R$ {formatCurrency(balancetes.MARAGESC.saidas)}</p>
-          </div>
-          <div className="p-4 bg-blue-900 rounded-2xl shadow-md">
-            <p className="text-[10px] font-black text-blue-200 uppercase">Saldo Atual</p>
-            <p className="text-lg font-black text-white">R$ {formatCurrency(balancetes.MARAGESC.saldo_final)}</p>
-          </div>
-        </div>
-
-        {/* Tabela de Movimentações MARAGESC */}
-        <div className="flex-1">
-          <p className="text-[10px] font-black text-slate-400 uppercase mb-3 ml-1">Extrato Operacional</p>
-          <div className="overflow-hidden rounded-2xl border border-slate-100">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-black">
-                <tr>
-                  <th className="p-3 text-left">Data</th>
-                  <th className="p-3 text-left">Descrição</th>
-                  <th className="p-3 text-right">Valor</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {movimentacoes.MARAGESC.map(m => (
-                  <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-3 text-slate-500 font-bold">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
-                    <td className="p-3 font-bold text-slate-700">{m.descricao}</td>
-                    <td className={`p-3 text-right font-black ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {m.tipo === 'entrada' ? '+' : '-'} R$ {formatCurrency(m.valor)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {/* COLUNA 2: CONTA AGESC */}
-      <div className="border-2 border-blue-900 rounded-3xl p-6 bg-white flex flex-col shadow-lg">
-        <div className="flex justify-between items-center mb-6">
-          <h3 className="text-2xl font-black text-blue-900 uppercase tracking-tight">AGESC</h3>
-          <span className="px-3 py-1 bg-blue-100 text-blue-700 text-[10px] font-black rounded-full border border-blue-200">CONTA ADMINISTRATIVA</span>
-        </div>
-
-        {/* Mini Dashboard AGESC */}
-        <div className="grid grid-cols-2 gap-3 mb-8">
-          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-            <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Anterior</p>
-            <p className="text-lg font-black text-slate-700">R$ {formatCurrency(balancetes.AGESC.saldo_inicial)}</p>
-          </div>
-          <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
-            <p className="text-[10px] font-black text-emerald-600 uppercase">Entradas</p>
-            <p className="text-lg font-black text-emerald-700">R$ {formatCurrency(balancetes.AGESC.entradas)}</p>
-          </div>
-          <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
-            <p className="text-[10px] font-black text-red-600 uppercase">Saídas</p>
-            <p className="text-lg font-black text-red-700">R$ {formatCurrency(balancetes.AGESC.saidas)}</p>
-          </div>
-          <div className="p-4 bg-blue-900 rounded-2xl shadow-md">
-            <p className="text-[10px] font-black text-blue-200 uppercase">Saldo Atual</p>
-            <p className="text-lg font-black text-white">R$ {formatCurrency(balancetes.AGESC.saldo_final)}</p>
-          </div>
-        </div>
-
-        {/* Tabela de Movimentações AGESC */}
-        <div className="flex-1">
-          <p className="text-[10px] font-black text-slate-400 uppercase mb-3 ml-1">Extrato Administrativo</p>
-          <div className="overflow-hidden rounded-2xl border border-slate-100">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-black">
-                <tr>
-                  <th className="p-3 text-left">Data</th>
-                  <th className="p-3 text-left">Descrição</th>
-                  <th className="p-3 text-right">Valor</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {movimentacoes.AGESC.map(m => (
-                  <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-3 text-slate-500 font-bold">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
-                    <td className="p-3 font-bold text-slate-700">{m.descricao}</td>
-                    <td className={`p-3 text-right font-black ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {m.tipo === 'entrada' ? '+' : '-'} R$ {formatCurrency(m.valor)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-);
+  );
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">

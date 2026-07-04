@@ -4,7 +4,7 @@ import {
   Building2, MapPin, Users, DollarSign, Trash2,
   LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle,
   CreditCard, Flame, ArrowUpCircle, ExternalLink, X,
-  FileText, Calendar, Percent, Link2, ChevronDown, ChevronRight, TrendingDown, Info, CheckCircle2, AlertCircle, ArrowDownCircle
+  FileText, Calendar, Percent, Link2, ChevronDown, ChevronRight, TrendingDown, Info, CheckCircle2, AlertCircle
 } from 'lucide-react';
 
 const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';
@@ -54,8 +54,13 @@ export default function App() {
 
   // Estados para Prestação de Contas
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [balancete, setBalancete] = useState({ saldo_inicial: 0, entradas: 0, saidas: 0, saldo_final: 0 });
-  const [movimentacoes, setMovimentacoes] = useState([]);
+  const [selectedCondoForPrestacao, setSelectedCondoForPrestacao] = useState(null);
+  const [balancetes, setBalancetes] = useState({
+    MARAGESC: { saldo_inicial: 0, entradas: 0, saidas: 0, saldo_final: 0 },
+    AGESC: { saldo_inicial: 0, entradas: 0, saidas: 0, saldo_final: 0 }
+  });
+  const [movimentacoes, setMovimentacoes] = useState({ MARAGESC: [], AGESC: [] });
+  const [loadingPrestacao, setLoadingPrestacao] = useState(false);
 
   useEffect(() => {
     fetchCondominios();
@@ -64,59 +69,68 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'prestacao') {
-      fetchBalanceteData();
-      fetchMovimentacoes();
+    if (activeTab === 'prestacao' && selectedCondoForPrestacao) {
+      fetchBalanceteData(selectedCondoForPrestacao.id, selectedMonth);
     }
-  }, [selectedMonth, activeTab]);
+  }, [activeTab, selectedCondoForPrestacao, selectedMonth]);
 
-  async function fetchBalanceteData() {
+  async function fetchBalanceteData(condoId, month) {
     try {
-      const { data, error } = await supabase
-        .from('balancetes_mensais')
-        .select('*')
-        .eq('mes', selectedMonth)
-        .maybeSingle();
+      setLoadingPrestacao(true);
+      const accounts = ['MARAGESC', 'AGESC'];
+      const newBalancetes = { ...balancetes };
+      const newMovimentacoes = { ...movimentacoes };
 
-      if (data) {
-        setBalancete(data);
-      } else {
-        // Lógica de Transporte: Busca saldo final do mês anterior
-        const [year, month] = selectedMonth.split('-').map(Number);
-        const prevDate = new Date(year, month - 2, 1);
-        const prevMonthStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
-
-        const { data: prevData } = await supabase
-          .from('balancetes_mensais')
-          .select('saldo_final')
-          .eq('mes', prevMonthStr)
+      for (const account of accounts) {
+        // 1. Buscar balancete do mês atual
+        let { data: current, error: err1 } = await supabase
+          .from('balancetes')
+          .select('*')
+          .eq('condominio_id', condoId)
+          .eq('mes_referencia', month)
+          .eq('conta', account)
           .maybeSingle();
 
-        setBalancete({
-          saldo_inicial: prevData?.saldo_final || 0,
-          entradas: 0,
-          saidas: 0,
-          saldo_final: prevData?.saldo_final || 0
-        });
+        if (current) {
+          newBalancetes[account] = current;
+        } else {
+          // 2. Lógica de transporte de saldo anterior
+          let { data: prev, error: err2 } = await supabase
+            .from('balancetes')
+            .select('saldo_final')
+            .eq('condominio_id', condoId)
+            .lt('mes_referencia', month)
+            .eq('conta', account)
+            .order('mes_referencia', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          newBalancetes[account] = {
+            saldo_inicial: prev?.saldo_final || 0,
+            entradas: 0,
+            saidas: 0,
+            saldo_final: prev?.saldo_final || 0
+          };
+        }
+
+        // 3. Buscar movimentações do mês
+        let { data: movs, error: err3 } = await supabase
+          .from('movimentacoes')
+          .select('*')
+          .eq('condominio_id', condoId)
+          .eq('mes_referencia', month)
+          .eq('conta', account)
+          .order('data', { ascending: true });
+
+        newMovimentacoes[account] = movs || [];
       }
-    } catch (err) {
-      console.error('Erro ao buscar balancete:', err);
-    }
-  }
 
-  async function fetchMovimentacoes() {
-    try {
-      const { data, error } = await supabase
-        .from('movimentacoes_extrato')
-        .select('*')
-        .gte('data', `${selectedMonth}-01`)
-        .lte('data', `${selectedMonth}-31`)
-        .order('data', { ascending: true });
-
-      if (error) throw error;
-      setMovimentacoes(data || []);
+      setBalancetes(newBalancetes);
+      setMovimentacoes(newMovimentacoes);
     } catch (err) {
-      console.error('Erro ao buscar movimentações:', err);
+      console.error('Erro ao buscar dados da prestação:', err);
+    } finally {
+      setLoadingPrestacao(false);
     }
   }
 
@@ -340,100 +354,110 @@ export default function App() {
   const currentAllocatedTotal = Object.values(allocations).filter(a => a.checked).reduce((sum, a) => sum + (Number(a.valor) || 0), 0);
 
   const renderPrestacao = () => (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-blue-900 shadow-sm">
-        <div>
-          <h2 className="text-xl font-black text-blue-900 uppercase">Prestação de Contas</h2>
-          <p className="text-sm text-slate-500 font-bold">Consolidado Mensal de Movimentações</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Calendar className="text-blue-900" size={20} />
-          <input 
-            type="month" 
-            className="bg-slate-50 border-none rounded-xl p-3 font-black text-blue-900 focus:ring-2 focus:ring-blue-900"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white p-6 rounded-3xl border border-blue-900 shadow-sm">
-          <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Anterior</p>
-          <p className="text-xl font-black text-blue-900">R$ {formatCurrency(balancete.saldo_inicial)}</p>
-        </div>
-        <div className="bg-emerald-50 p-6 rounded-3xl border border-emerald-200 shadow-sm">
-          <p className="text-[10px] font-black text-emerald-600 uppercase">Entradas</p>
-          <p className="text-xl font-black text-emerald-700">R$ {formatCurrency(balancete.entradas)}</p>
-        </div>
-        <div className="bg-red-50 p-6 rounded-3xl border border-red-200 shadow-sm">
-          <p className="text-[10px] font-black text-red-600 uppercase">Saídas</p>
-          <p className="text-xl font-black text-red-700">R$ {formatCurrency(balancete.saidas)}</p>
-        </div>
-        <div className="bg-slate-900 p-6 rounded-3xl shadow-lg">
-          <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Atual</p>
-          <p className="text-xl font-black text-white">R$ {formatCurrency(balancete.saldo_final)}</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white rounded-3xl border border-blue-900 overflow-hidden">
-          <div className="bg-blue-900 p-4 text-white flex items-center gap-2">
-            <Building2 size={18} />
-            <h3 className="font-black uppercase text-sm">Conta MARAGESC</h3>
+    <div className="max-w-7xl mx-auto space-y-8">
+      <div className="bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+        <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-blue-900">
+          <FileText size={24}/> PRESTAÇÃO DE CONTAS
+        </h2>
+        
+        <div className="flex flex-col md:flex-row gap-4 mb-8 items-end">
+          <div className="flex-1">
+            <label className="text-xs font-black text-slate-400 uppercase ml-1">Condomínio</label>
+            <select 
+              className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900"
+              value={selectedCondoForPrestacao?.id || ''}
+              onChange={(e) => setSelectedCondoForPrestacao(condominios.find(c => c.id === e.target.value))}
+            >
+              <option value="">Selecione um condomínio...</option>
+              {condominios.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            </select>
           </div>
-          <div className="p-4 overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="pb-2 font-black text-slate-400 uppercase">Data</th>
-                  <th className="pb-2 font-black text-slate-400 uppercase">Descrição</th>
-                  <th className="pb-2 font-black text-slate-400 uppercase text-right">Valor</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {movimentacoes.filter(m => m.conta === 'MARAGESC').map(m => (
-                  <tr key={m.id} className="hover:bg-slate-50">
-                    <td className="py-3 font-bold text-slate-600">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
-                    <td className="py-3 font-bold text-slate-800">{m.descricao}</td>
-                    <td className={`py-3 font-black text-right ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {m.tipo === 'saida' ? '-' : ''} R$ {formatCurrency(m.valor)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="w-full md:w-48">
+            <label className="text-xs font-black text-slate-400 uppercase ml-1">Mês de Referência</label>
+            <input 
+              type="month" 
+              className="w-full bg-slate-50 border-none rounded-xl p-4 mt-1 font-bold text-blue-900"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+            />
           </div>
         </div>
 
-        <div className="bg-white rounded-3xl border border-blue-900 overflow-hidden">
-          <div className="bg-blue-900 p-4 text-white flex items-center gap-2">
-            <Users size={18} />
-            <h3 className="font-black uppercase text-sm">Conta AGESC</h3>
+        {!selectedCondoForPrestacao ? (
+          <div className="text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+            <Building2 className="mx-auto text-slate-300 mb-4" size={48} />
+            <p className="text-slate-500 font-bold">Selecione um condomínio para visualizar a prestação de contas.</p>
           </div>
-          <div className="p-4 overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="pb-2 font-black text-slate-400 uppercase">Data</th>
-                  <th className="pb-2 font-black text-slate-400 uppercase">Descrição</th>
-                  <th className="pb-2 font-black text-slate-400 uppercase text-right">Valor</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {movimentacoes.filter(m => m.conta === 'AGESC').map(m => (
-                  <tr key={m.id} className="hover:bg-slate-50">
-                    <td className="py-3 font-bold text-slate-600">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
-                    <td className="py-3 font-bold text-slate-800">{m.descricao}</td>
-                    <td className={`py-3 font-black text-right ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {m.tipo === 'saida' ? '-' : ''} R$ {formatCurrency(m.valor)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        ) : loadingPrestacao ? (
+          <div className="text-center py-20">
+            <Loader2 className="animate-spin mx-auto text-blue-900" size={48} />
           </div>
-        </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {['MARAGESC', 'AGESC'].map(acc => (
+              <div key={acc} className="border-2 border-blue-900 rounded-3xl p-6 bg-white flex flex-col">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-2xl font-black text-blue-900 uppercase tracking-tight">{acc}</h3>
+                  <span className="px-3 py-1 bg-blue-50 text-blue-900 text-[10px] font-black rounded-full border border-blue-100">CONTA CORRENTE</span>
+                </div>
+
+                {/* Mini Dashboard de Saldos */}
+                <div className="grid grid-cols-2 gap-3 mb-8">
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                    <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Anterior</p>
+                    <p className="text-lg font-black text-slate-700">R$ {formatCurrency(balancetes[acc].saldo_inicial)}</p>
+                  </div>
+                  <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                    <p className="text-[10px] font-black text-emerald-600 uppercase">Entradas</p>
+                    <p className="text-lg font-black text-emerald-700">R$ {formatCurrency(balancetes[acc].entradas)}</p>
+                  </div>
+                  <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
+                    <p className="text-[10px] font-black text-red-600 uppercase">Saídas</p>
+                    <p className="text-lg font-black text-red-700">R$ {formatCurrency(balancetes[acc].saidas)}</p>
+                  </div>
+                  <div className="p-4 bg-blue-900 rounded-2xl">
+                    <p className="text-[10px] font-black text-blue-200 uppercase">Saldo Atual</p>
+                    <p className="text-lg font-black text-white">R$ {formatCurrency(balancetes[acc].saldo_final)}</p>
+                  </div>
+                </div>
+
+                {/* Tabela de Movimentações */}
+                <div className="flex-1">
+                  <p className="text-[10px] font-black text-slate-400 uppercase mb-3 ml-1">Movimentações do Período</p>
+                  <div className="overflow-hidden rounded-2xl border border-slate-100">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-black">
+                        <tr>
+                          <th className="p-3 text-left">Data</th>
+                          <th className="p-3 text-left">Descrição</th>
+                          <th className="p-3 text-right">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {movimentacoes[acc].map(m => (
+                          <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-3 text-slate-500 font-bold">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
+                            <td className="p-3 font-bold text-slate-700">{m.descricao}</td>
+                            <td className={`p-3 text-right font-black ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {m.tipo === 'entrada' ? '+' : '-'} R$ {formatCurrency(m.valor)}
+                            </td>
+                          </tr>
+                        ))}
+                        {movimentacoes[acc].length === 0 && (
+                          <tr>
+                            <td colSpan="3" className="p-12 text-center text-slate-400 font-bold italic">
+                              Nenhuma movimentação registrada para este período.
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -447,7 +471,7 @@ export default function App() {
         </div>
         <nav className="flex gap-2">
           <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'dashboard' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Dashboard</button>
-          <button onClick={() => setActiveTab('prestacao')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'prestacao' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Prestação</button>
+          <button onClick={() => setActiveTab('prestacao')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'prestacao' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Prestação de Contas</button>
           <button onClick={() => setActiveTab('gerenciar')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'gerenciar' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Gerenciar</button>
           <button onClick={() => setActiveTab('contratos')} className={`px-4 py-2 rounded-lg font-bold ${activeTab === 'contratos' ? 'bg-white text-blue-900 shadow-lg' : 'hover:bg-blue-800'}`}>Contratos</button>
         </nav>

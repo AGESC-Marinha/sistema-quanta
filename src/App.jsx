@@ -146,6 +146,17 @@ export default function App() {
 
   async function handleContractSubmit(e) {
     e.preventDefault();
+
+    const totalContrato = (Number(contractForm.valor_mensal) || 0) + (Number(contractForm.aditivo_valor) || 0);
+    const totalAlocado = Object.values(allocations)
+      .filter(a => a.checked)
+      .reduce((sum, a) => sum + (Number(a.valor) || 0), 0);
+
+    if (totalContrato.toFixed(2) !== totalAlocado.toFixed(2)) {
+      alert(`Erro de integridade financeira: O valor total do contrato (R$ ${totalContrato.toFixed(2)}) não coincide com a soma dos rateios alocados (R$ ${totalAlocado.toFixed(2)}).`);
+      return;
+    }
+
     setSavingContract(true);
     const contractPayload = {
       numero_contrato: contractForm.numero_contrato,

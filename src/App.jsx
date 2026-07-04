@@ -35,7 +35,27 @@ const INITIAL_CONTRACT_FORM = {
   prazo_fim: '',
   link_pdf: ''
 };
+// --- COPIE E COLE AQUI (Linha 32) ---
+const CATEGORIAS = {
+  MARAGESC: {
+    entradas: ['Repasse PAPEM', 'Permissionário Civil', 'Desocupados (AGESC)', 'Taxa Extra', 'Reembolso', 'TLP', 'Rendimentos'],
+    saidas: ['Repasse Condomínios', 'Taxa AGESC (4,5%)', 'Empresas Terceirizadas', 'Síndico Profissional', 'Contabilidade (ASCON)', 'Restituição', 'Taxas PNR Isolados', 'Auditoria', 'Seguros', 'Projetos/PPCI']
+  },
+  AGESC: {
+    entradas: ['Taxa AGESC (4,5%)', 'Juros Investimentos', 'Dividendos', 'Saldos Investimentos'],
+    saidas: ['Contabilidade', 'Advogado', 'Pró-labore', 'Impostos (DARF/FGTS)', 'Aluguel Sede', 'Neoenergia', 'Internet', 'Google Workspace', 'Cartão de Crédito', 'IPTU', 'Material Escritório', 'Tarifas Bancárias']
+  }
+};
 
+const INITIAL_MOV_FORM = {
+  data_movimento: new Date().toISOString().split('T')[0],
+  descricao: '',
+  valor: '',
+  tipo: 'saida',
+  conta: 'MARAGESC',
+  categoria: ''
+};
+// --- FIM DA COLAGEM 1 ---
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [condominios, setCondominios] = useState([]);
@@ -61,7 +81,10 @@ export default function App() {
   });
   const [movimentacoes, setMovimentacoes] = useState({ MARAGESC: [], AGESC: [] });
   const [loadingPrestacao, setLoadingPrestacao] = useState(false);
-
+// --- COPIE E COLE AQUI (Linha 54) ---
+  const [movForm, setMovForm] = useState(INITIAL_MOV_FORM);
+  const [savingMov, setSavingMov] = useState(false);
+// --- FIM DA COLAGEM 2 ---
   useEffect(() => {
     fetchCondominios();
     fetchContratos();
@@ -75,6 +98,7 @@ export default function App() {
     }
   }, [activeTab, selectedCondoForPrestacao, selectedMonth]);
 
+// --- SUBSTITUA DA LINHA 58 ATÉ 105 POR ESTE BLOCO ---
   async function fetchBalanceteData(condoId, month) {
     try {
       setLoadingPrestacao(true);
@@ -83,12 +107,11 @@ export default function App() {
       const newMovimentacoes = { ...movimentacoes };
 
       for (const account of accounts) {
-        // 1. Buscar balancete do mês atual
+        // 1. Buscar balancete do mês atual (Tabela corrigida: balancetes_mensais)
         let { data: current, error: err1 } = await supabase
-          .from('balancetes')
+          .from('balancetes_mensais')
           .select('*')
-          .eq('condominio_id', condoId)
-          .eq('mes_referencia', month)
+          .eq('mes_referencia', month + '-01')
           .eq('conta', account)
           .maybeSingle();
 
@@ -97,10 +120,9 @@ export default function App() {
         } else {
           // 2. Lógica de transporte de saldo anterior
           let { data: prev, error: err2 } = await supabase
-            .from('balancetes')
+            .from('balancetes_mensais')
             .select('saldo_final')
-            .eq('condominio_id', condoId)
-            .lt('mes_referencia', month)
+            .lt('mes_referencia', month + '-01')
             .eq('conta', account)
             .order('mes_referencia', { ascending: false })
             .limit(1)
@@ -113,6 +135,78 @@ export default function App() {
             saldo_final: prev?.saldo_final || 0
           };
         }
+
+        // 3. Buscar movimentações (Tabela corrigida: movimentacoes_extrato)
+        let { data: movs, error: err3 } = await supabase
+          .from('movimentacoes_extrato')
+          .select('*')
+          .eq('balancete_id', current?.id || null)
+          .order('data_movimento', { ascending: true });
+
+        newMovimentacoes[account] = movs || [];
+      }
+      setBalancetes(newBalancetes);
+      setMovimentacoes(newMovimentacoes);
+    } catch (err) {
+      console.error('Erro ao buscar dados da prestação:', err);
+    } finally {
+      setLoadingPrestacao(false);
+    }
+  }
+
+  async function handleMovSubmit(e) {
+    e.preventDefault();
+    if (!movForm.categoria) return alert('Selecione uma categoria');
+    setSavingMov(true);
+    try {
+      // 1. Garantir que o Balancete Pai existe
+      let { data: balancete, error: bError } = await supabase
+        .from('balancetes_mensais')
+        .select('id')
+        .eq('mes_referencia', selectedMonth + '-01')
+        .eq('conta', movForm.conta)
+        .maybeSingle();
+
+      let balanceteId = balancete?.id;
+
+      if (!balanceteId) {
+        const { data: newB, error: createError } = await supabase
+          .from('balancetes_mensais')
+          .insert([{ 
+            mes_referencia: selectedMonth + '-01', 
+            conta: movForm.conta,
+            saldo_inicial: balancetes[movForm.conta].saldo_inicial,
+            status: 'Aberto'
+          }])
+          .select();
+        if (createError) throw createError;
+        balanceteId = newB[0].id;
+      }
+
+      // 2. Inserir Movimentação
+      const { error: movError } = await supabase
+        .from('movimentacoes_extrato')
+        .insert([{
+          balancete_id: balanceteId,
+          data_movimento: movForm.data_movimento,
+          descricao: movForm.descricao,
+          categoria: movForm.categoria,
+          tipo: movForm.tipo,
+          valor: Number(movForm.valor)
+        }]);
+
+      if (movError) throw movError;
+
+      alert('Lançamento realizado com sucesso!');
+      setMovForm({...INITIAL_MOV_FORM, conta: movForm.conta, data_movimento: movForm.data_movimento});
+      fetchBalanceteData(null, selectedMonth);
+    } catch (err) {
+      alert('Erro ao salvar: ' + err.message);
+    } finally {
+      setSavingMov(false);
+    }
+  }
+// --- FIM DA SUBSTITUIÇÃO ---
 
         // 3. Buscar movimentações do mês
         let { data: movs, error: err3 } = await supabase

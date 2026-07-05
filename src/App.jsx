@@ -210,6 +210,30 @@ export default function App() {
     }
   }
 // --- FIM DA SUBSTITUIÇÃO ---
+  
+    // MOTOR DE INTELIGÊNCIA: MAPEAMENTO DE PADRÕES (REGEX)
+  const autoCategorize = (descricao, conta) => {
+    const desc = descricao.toUpperCase();
+    const regras = {
+      MARAGESC: [
+        { padrao: /PAPEM|REPASSE.*MARINHA/i, cat: 'Repasse PAPEM' },
+        { padrao: /NEOENERGIA|CEB/i, cat: 'Empresas Terceirizadas' },
+        { padrao: /ASCON|CONTABIL/i, cat: 'Contabilidade (ASCON)' },
+        { padrao: /TAR.*CONTA|DOC.*ELET/i, cat: 'Tarifas Bancárias' },
+        { padrao: /REND.*APLIC|JUROS/i, cat: 'Rendimentos' },
+      ],
+      AGESC: [
+        { padrao: /ALUGUEL.*SEDE/i, cat: 'Aluguel Sede' },
+        { padrao: /DARF|FGTS|IMPOSTO/i, cat: 'Impostos (DARF/FGTS)' },
+        { padrao: /INTERNET|VIVO|CLARO/i, cat: 'Internet' },
+        { padrao: /GOOGLE|WORKSPACE/i, cat: 'Google Workspace' },
+        { padrao: /TAR.*CONTA/i, cat: 'Tarifas Bancárias' },
+      ]
+    };
+
+    const match = regras[conta]?.find(r => r.padrao.test(desc));
+    return match ? match.cat : ''; // Retorna a categoria ou vazio para preenchimento manual
+  };
   // MOTOR DE CONCILIAÇÃO - PARSER XLSX BB
   const processExcelFile = async (file) => {
     if (!file) return;
@@ -241,8 +265,9 @@ export default function App() {
             valor: Math.abs(row.valor_r_ || 0),
             tipo: (row.valor_r_ < 0) ? 'saida' : 'entrada',
             documento: row.numero_documento?.toString() || '',
-            categoria: '' // Aguardando Motor de Categorização (Sprint 2)
-          };
+            // A mágica acontece aqui: o sistema tenta prever a categoria
+            categoria: autoCategorize(row.historico || '', movForm.conta) 
+          };     
         }).filter(item => item !== null);
 
         if (normalized.length === 0) {

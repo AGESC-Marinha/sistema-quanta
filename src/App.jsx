@@ -234,7 +234,7 @@ export default function App() {
     const match = regras[conta]?.find(r => r.padrao.test(desc));
     return match ? match.cat : ''; // Retorna a categoria ou vazio para preenchimento manual
   };
-  // MOTOR DE CONCILIAÇÃO - PARSER XLSX BB
+    // MOTOR DE CONCILIAÇÃO - PARSER XLSX BB (VERSÃO RESILIENTE)
   const processExcelFile = async (file) => {
     if (!file) return;
     setIsReadingFile(true);
@@ -246,35 +246,40 @@ export default function App() {
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-        // Validação de Competência: Filtra apenas o mês selecionado no sistema
         const [year, month] = selectedMonth.split('-');
         
         const normalized = jsonData.map(row => {
-          const dataMov = row.data ? new Date(row.data) : null;
-          if (!dataMov) return null;
+          // Busca a data em colunas comuns (data, Data, DATA, dt_movimento)
+          const rawDate = row.data || row.Data || row.DATA || row.dt_movimento;
+          const dataMov = rawDate ? new Date(rawDate) : null;
+          
+          if (!dataMov || isNaN(dataMov.getTime())) return null;
 
-          // Verifica se a data do extrato bate com o mês da prestação aberta
+          // Validação de Competência
           const isSameMonth = dataMov.getFullYear() === parseInt(year) && 
                              (dataMov.getMonth() + 1) === parseInt(month);
 
           if (!isSameMonth) return null;
 
+          // Busca o valor em colunas comuns (valor_r_, Valor, VALOR)
+          const rawValor = row.valor_r_ || row.Valor || row.VALOR || 0;
+
           return {
             data_movimento: dataMov.toISOString().split('T')[0],
-            descricao: row.historico || 'Sem descrição',
-            valor: Math.abs(row.valor_r_ || 0),
-            tipo: (row.valor_r_ < 0) ? 'saida' : 'entrada',
-            documento: row.numero_documento?.toString() || '',
-            // A mágica acontece aqui: o sistema tenta prever a categoria
+            descricao: row.historico || row.Descrição || row.DESCRICAO || 'Sem descrição',
+            valor: Math.abs(rawValor),
+            tipo: (rawValor &lt; 0) ? 'saida' : 'entrada',
+            documento: (row.numero_documento || row.Documento || '').toString(),
             categoria: autoCategorize(row.historico || '', movForm.conta) 
-          };     
+          };
         }).filter(item => item !== null);
 
         if (normalized.length === 0) {
-          alert(`Atenção: Nenhuma movimentação de ${month}/${year} encontrada neste arquivo.`);
+          alert(`ERRO DE VALIDAÇÃO:\n\nNão encontramos lançamentos para ${month}/${year} neste arquivo.\n\nVerifique se:\n1. O mês selecionado no sistema coincide com o extrato.\n2. O arquivo XLSX contém a coluna 'data' ou 'Data'.`);
         } else {
           setStagingMovs(normalized);
-          alert(`${normalized.length} lançamentos de ${month}/${year} lidos com sucesso!`);
+          // Feedback visual imediato
+          window.scrollTo({ top: 400, behavior: 'smooth' });
         }
       };
       reader.readAsArrayBuffer(file);
@@ -283,7 +288,7 @@ export default function App() {
     } finally {
       setIsReadingFile(false);
     }
-  };      
+  };
   async function fetchCondominios() {
     try {
       setLoading(true);

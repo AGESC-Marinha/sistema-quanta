@@ -520,7 +520,68 @@ export default function App() {
         </label>
       </div>
       </div>
-      
+            {/* TABELA DE STAGING - REVISÃO DE IMPORTAÇÃO */}
+      {stagingMovs.length > 0 && (
+        <div className="bg-white p-8 rounded-3xl shadow-xl border-2 border-blue-900 mb-8 animate-in fade-in slide-in-from-top-4">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg font-black text-blue-900 uppercase flex items-center gap-2">
+              <CheckCircle2 size={20} className="text-emerald-500" /> Conferência de Lançamentos ({stagingMovs.length})
+            </h3>
+            <div className="flex gap-3">
+              <button onClick={() => setStagingMovs([])} className="text-slate-400 hover:text-red-500 font-bold text-xs uppercase">Descartar</button>
+              <button 
+                onClick={async () => {
+                  // Lógica para salvar em lote no Supabase (Sprint 2)
+                  alert("Iniciando persistência no Supabase...");
+                }}
+                className="bg-emerald-500 text-white px-6 py-2 rounded-xl font-black hover:bg-emerald-600 transition-all shadow-md text-sm"
+              >
+                CONFIRMAR E SALVAR TUDO
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-slate-100">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-black">
+                <tr>
+                  <th className="p-3 text-left">Data</th>
+                  <th className="p-3 text-left">Descrição do Banco</th>
+                  <th className="p-3 text-left">Categoria Sugerida</th>
+                  <th className="p-3 text-right">Valor</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {stagingMovs.map((m, idx) => (
+                  <tr key={idx} className="hover:bg-blue-50/50 transition-colors">
+                    <td className="p-3 font-bold text-slate-500">{new Date(m.data_movimento).toLocaleDateString('pt-BR')}</td>
+                    <td className="p-3 font-bold text-slate-700">{m.descricao}</td>
+                    <td className="p-3">
+                      <select 
+                        className="bg-slate-100 border-none rounded-lg p-1 text-xs font-bold text-blue-900 focus:ring-2 focus:ring-blue-500"
+                        value={m.categoria}
+                        onChange={(e) => {
+                          const newMovs = [...stagingMovs];
+                          newMovs[idx].categoria = e.target.value;
+                          setStagingMovs(newMovs);
+                        }}
+                      >
+                        <option value="">Selecionar...</option>
+                        {CATEGORIAS[movForm.conta].saidas.concat(CATEGORIAS[movForm.conta].entradas).map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className={`p-3 text-right font-black ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
+                      {m.tipo === 'entrada' ? '+' : '-'} R$ {m.valor.toLocaleString('pt-BR', {minimumFractionDigits: 2})}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       {/* --- FORMULÁRIO DE LANÇAMENTOS MANUAIS --- */}
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 mb-8">
         <h3 className="text-lg font-black text-blue-900 uppercase mb-6 flex items-center gap-2">

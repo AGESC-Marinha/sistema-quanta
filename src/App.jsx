@@ -81,6 +81,9 @@ export default function App() {
   });
   const [movimentacoes, setMovimentacoes] = useState({ MARAGESC: [], AGESC: [] });
   const [loadingPrestacao, setLoadingPrestacao] = useState(false);
+    // --- ESTADOS PARA CONCILIAÇÃO (SPRINT 1) ---
+  const [stagingMovs, setStagingMovs] = useState([]);
+  const [isReadingFile, setIsReadingFile] = useState(false);
 // --- COPIE E COLE AQUI (Linha 54) ---
   const [movForm, setMovForm] = useState(INITIAL_MOV_FORM);
   const [savingMov, setSavingMov] = useState(false);
@@ -207,7 +210,55 @@ export default function App() {
     }
   }
 // --- FIM DA SUBSTITUIÇÃO ---
-      
+  // MOTOR DE CONCILIAÇÃO - PARSER XLSX BB
+  const processExcelFile = async (file) => {
+    if (!file) return;
+    setIsReadingFile(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+        // Validação de Competência: Filtra apenas o mês selecionado no sistema
+        const [year, month] = selectedMonth.split('-');
+        
+        const normalized = jsonData.map(row => {
+          const dataMov = row.data ? new Date(row.data) : null;
+          if (!dataMov) return null;
+
+          // Verifica se a data do extrato bate com o mês da prestação aberta
+          const isSameMonth = dataMov.getFullYear() === parseInt(year) && 
+                             (dataMov.getMonth() + 1) === parseInt(month);
+
+          if (!isSameMonth) return null;
+
+          return {
+            data_movimento: dataMov.toISOString().split('T')[0],
+            descricao: row.historico || 'Sem descrição',
+            valor: Math.abs(row.valor_r_ || 0),
+            tipo: (row.valor_r_ < 0) ? 'saida' : 'entrada',
+            documento: row.numero_documento?.toString() || '',
+            categoria: '' // Aguardando Motor de Categorização (Sprint 2)
+          };
+        }).filter(item => item !== null);
+
+        if (normalized.length === 0) {
+          alert(`Atenção: Nenhuma movimentação de ${month}/${year} encontrada neste arquivo.`);
+        } else {
+          setStagingMovs(normalized);
+          alert(`${normalized.length} lançamentos de ${month}/${year} lidos com sucesso!`);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } catch (err) {
+      alert("Erro crítico no Parser: " + err.message);
+    } finally {
+      setIsReadingFile(false);
+    }
+  };      
   async function fetchCondominios() {
     try {
       setLoading(true);
@@ -451,7 +502,25 @@ export default function App() {
           </div>
           <Calendar className="text-blue-900 opacity-40" size={24} />
         </div>
+              {/* PAINEL DE IMPORTAÇÃO XLSX (SPRINT 1) */}
+      <div className="bg-white p-8 rounded-3xl shadow-sm border-2 border-dashed border-blue-200 mb-8 flex flex-col md:flex-row justify-between items-center gap-6">
+        <div className="flex items-center gap-4">
+          <div className="bg-blue-900 p-3 rounded-2xl text-white">
+            <FileText size={24} />
+          </div>
+          <div>
+            <h3 className="font-black text-blue-900 uppercase text-sm">Conciliação Bancária Automática</h3>
+            <p className="text-xs text-slate-500 font-bold">Importe o XLSX do Banco do Brasil para o mês de {selectedMonth.split('-').reverse().join('/')}</p>
+          </div>
+        </div>
+        <label className="cursor-pointer bg-blue-900 text-white px-8 py-3 rounded-xl font-black hover:bg-blue-800 transition-all shadow-lg flex items-center gap-2">
+          {isReadingFile ? <Loader2 className="animate-spin" size={20} /> : <PlusCircle size={20} />}
+          {isReadingFile ? 'LENDO ARQUIVO...' : 'SELECIONAR EXTRATO XLSX'}
+          <input type="file" accept=".xlsx" className="hidden" onChange={(e) => processExcelFile(e.target.files[0])} />
+        </label>
       </div>
+      </div>
+      
       {/* --- FORMULÁRIO DE LANÇAMENTOS MANUAIS --- */}
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 mb-8">
         <h3 className="text-lg font-black text-blue-900 uppercase mb-6 flex items-center gap-2">

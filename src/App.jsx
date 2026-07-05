@@ -36,7 +36,7 @@ const INITIAL_CONTRACT_FORM = {
   prazo_fim: '',
   link_pdf: ''
 };
-// --- COPIE E COLE AQUI (Linha 32) ---
+
 const CATEGORIAS = {
   MARAGESC: {
     entradas: ['Repasse PAPEM', 'Permissionário Civil', 'Desocupados (AGESC)', 'Taxa Extra', 'Reembolso', 'TLP', 'Rendimentos'],
@@ -56,7 +56,7 @@ const INITIAL_MOV_FORM = {
   conta: 'MARAGESC',
   categoria: ''
 };
-// --- FIM DA COLAGEM 1 ---
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [condominios, setCondominios] = useState([]);
@@ -73,7 +73,6 @@ export default function App() {
   const [savingContract, setSavingContract] = useState(false);
   const [allocations, setAllocations] = useState({});
 
-  // Estados para Prestação de Contas
   const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
   const [selectedCondoForPrestacao, setSelectedCondoForPrestacao] = useState(null);
   const [balancetes, setBalancetes] = useState({
@@ -82,15 +81,12 @@ export default function App() {
   });
   const [movimentacoes, setMovimentacoes] = useState({ MARAGESC: [], AGESC: [] });
   const [loadingPrestacao, setLoadingPrestacao] = useState(false);
-    // --- ESTADOS PARA CONCILIAÇÃO (SPRINT 1) ---
   const [stagingMovs, setStagingMovs] = useState([]);
   const [isReadingFile, setIsReadingFile] = useState(false);
-// --- COPIE E COLE AQUI (Linha 54) ---
   const [movForm, setMovForm] = useState(INITIAL_MOV_FORM);
   const [savingMov, setSavingMov] = useState(false);
-// --- FIM DA COLAGEM 2 ---
+
   useEffect(() => {
-    // Carrega a biblioteca de Excel dinamicamente para evitar erro na Vercel
     const script = document.createElement('script');
     script.src = "https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js";
     script.async = true;
@@ -101,14 +97,12 @@ export default function App() {
     fetchRateios();
   }, []);
 
-  // useEffect corrigido para observar mudanças no mês e carregar dados globais ou específicos
   useEffect(() => {
     if (activeTab === 'prestacao') {
       fetchBalanceteData(selectedCondoForPrestacao?.id || null, selectedMonth);
     }
   }, [activeTab, selectedCondoForPrestacao, selectedMonth]);
 
-// --- SUBSTITUA DA LINHA 58 ATÉ 105 POR ESTE BLOCO ---
   async function fetchBalanceteData(condoId, month) {
     try {
       setLoadingPrestacao(true);
@@ -117,7 +111,6 @@ export default function App() {
       const newMovimentacoes = { ...movimentacoes };
 
       for (const account of accounts) {
-        // 1. Buscar balancete do mês atual (Tabela corrigida: balancetes_mensais)
         let { data: current, error: err1 } = await supabase
           .from('balancetes_mensais')
           .select('*')
@@ -128,7 +121,6 @@ export default function App() {
         if (current) {
           newBalancetes[account] = current;
         } else {
-          // 2. Lógica de transporte de saldo anterior
           let { data: prev, error: err2 } = await supabase
             .from('balancetes_mensais')
             .select('saldo_final')
@@ -146,7 +138,6 @@ export default function App() {
           };
         }
 
-        // 3. Buscar movimentações (Tabela corrigida: movimentacoes_extrato)
         let { data: movs, error: err3 } = await supabase
           .from('movimentacoes_extrato')
           .select('*')
@@ -169,7 +160,6 @@ export default function App() {
     if (!movForm.categoria) return alert('Selecione uma categoria');
     setSavingMov(true);
     try {
-      // 1. Garantir que o Balancete Pai existe
       let { data: balancete, error: bError } = await supabase
         .from('balancetes_mensais')
         .select('id')
@@ -193,7 +183,6 @@ export default function App() {
         balanceteId = newB[0].id;
       }
 
-      // 2. Inserir Movimentação
       const { error: movError } = await supabase
         .from('movimentacoes_extrato')
         .insert([{
@@ -216,9 +205,59 @@ export default function App() {
       setSavingMov(false);
     }
   }
-// --- FIM DA SUBSTITUIÇÃO ---
-  
-    // MOTOR DE INTELIGÊNCIA: MAPEAMENTO DE PADRÕES (REGEX)
+
+  async function saveStagingToSupabase() {
+    if (stagingMovs.length === 0) return;
+    setSavingMov(true);
+    try {
+      let { data: balancete, error: bError } = await supabase
+        .from('balancetes_mensais')
+        .select('id')
+        .eq('mes_referencia', selectedMonth + '-01')
+        .eq('conta', movForm.conta)
+        .maybeSingle();
+
+      let balanceteId = balancete?.id;
+
+      if (!balanceteId) {
+        const { data: newB, error: createError } = await supabase
+          .from('balancetes_mensais')
+          .insert([{
+            mes_referencia: selectedMonth + '-01',
+            conta: movForm.conta,
+            saldo_inicial: balancetes[movForm.conta]?.saldo_inicial || 0,
+            status: 'Aberto'
+          }])
+          .select();
+        if (createError) throw createError;
+        balanceteId = newB[0].id;
+      }
+
+      const batch = stagingMovs.map(m => ({
+        balancete_id: balanceteId,
+        data_movimento: m.data_movimento,
+        descricao: m.descricao,
+        categoria: m.categoria || 'Outros',
+        tipo: m.tipo,
+        valor: Number(m.valor)
+      }));
+
+      const { error: batchError } = await supabase
+        .from('movimentacoes_extrato')
+        .insert(batch);
+
+      if (batchError) throw batchError;
+
+      alert(`${stagingMovs.length} lançamentos importados com sucesso!`);
+      setStagingMovs([]);
+      fetchBalanceteData(null, selectedMonth);
+    } catch (err) {
+      alert('Erro na persistência em lote: ' + err.message);
+    } finally {
+      setSavingMov(false);
+    }
+  }
+
   const autoCategorize = (descricao, conta) => {
     const desc = descricao.toUpperCase();
     const regras = {
@@ -239,14 +278,11 @@ export default function App() {
     };
 
     const match = regras[conta]?.find(r => r.padrao.test(desc));
-    return match ? match.cat : ''; // Retorna a categoria ou vazio para preenchimento manual
+    return match ? match.cat : '';
   };
-    // MOTOR DE CONCILIAÇÃO - PARSER XLSX BB (VERSÃO RESILIENTE)
-    // MOTOR DE CONCILIAÇÃO - PARSER XLSX BB (VERSÃO COM DIAGNÓSTICO)
+
   const processExcelFile = async (file) => {
     if (!file) return;
-    
-    // 1. Verificação de Segurança: A biblioteca carregou?
     if (!window.XLSX) {
       alert("ERRO: A ferramenta de leitura de Excel ainda está sendo carregada. Aguarde 5 segundos e tente novamente.");
       return;
@@ -262,7 +298,6 @@ export default function App() {
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
           const jsonData = window.XLSX.utils.sheet_to_json(worksheet);
 
-          // DIAGNÓSTICO: O que o sistema leu?
           if (!jsonData || jsonData.length === 0) {
             alert("ERRO: O arquivo parece estar vazio ou em formato inválido.");
             return;
@@ -271,15 +306,12 @@ export default function App() {
           const [year, month] = selectedMonth.split('-');
           
           const normalized = jsonData.map((row, index) => {
-            // Busca flexível de colunas
             const rawDate = row.data || row.Data || row.DATA || row['Data Movimento'] || row.dt_movimento;
             const rawDesc = row.historico || row.Historico || row.HISTORICO || row.Descrição || row.descricao;
             const rawValor = row.valor_r_ || row.valor || row.Valor || row.VALOR || row.valor_lancamento;
             const rawDoc = row.numero_documento || row.documento || row.Documento || row.doc;
 
             const dataMov = rawDate ? new Date(rawDate) : null;
-            
-            // Validação de Data
             if (!dataMov || isNaN(dataMov.getTime())) return null;
 
             const isSameMonth = dataMov.getFullYear() === parseInt(year) && 
@@ -298,7 +330,6 @@ export default function App() {
           }).filter(item => item !== null);
 
           if (normalized.length === 0) {
-            // Se chegou aqui, o arquivo foi lido, mas as datas não batem
             const colunasEncontradas = Object.keys(jsonData[0]).join(', ');
             alert(`ERRO DE COMPETÊNCIA:\n\nNão encontramos lançamentos para ${month}/${year}.\n\nColunas detectadas no arquivo: [${colunasEncontradas}]\n\nCertifique-se de que o mês selecionado no sistema é o mesmo do extrato.`);
           } else {
@@ -316,6 +347,7 @@ export default function App() {
       setIsReadingFile(false);
     }
   };
+
   async function fetchCondominios() {
     try {
       setLoading(true);
@@ -404,7 +436,6 @@ export default function App() {
 
   async function handleContractSubmit(e) {
     e.preventDefault();
-
     const totalContrato = (Number(contractForm.valor_mensal) || 0) + (Number(contractForm.aditivo_valor) || 0);
     const totalAlocado = Object.values(allocations)
       .filter(a => a.checked)
@@ -537,7 +568,6 @@ export default function App() {
 
   const renderPrestacao = () => (
     <div className="max-w-7xl mx-auto space-y-8">
-      {/* Cabeçalho Consolidado com Seletor Funcional */}
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 flex flex-col md:flex-row justify-between items-center gap-4">
         <div>
           <h2 className="text-2xl font-black text-blue-900 uppercase">
@@ -546,7 +576,6 @@ export default function App() {
           <p className="text-sm text-slate-500 font-bold">Consolidado Global das Contas MARAGESC e AGESC</p>
         </div>
         
-        {/* SELETOR DE MÊS FUNCIONAL */}
         <div className="bg-blue-50 px-6 py-3 rounded-2xl border border-blue-100 flex items-center gap-4 shadow-inner">
           <div className="flex flex-col">
             <span className="text-[9px] font-black text-blue-400 uppercase tracking-widest">Período de Referência</span>
@@ -559,25 +588,25 @@ export default function App() {
           </div>
           <Calendar className="text-blue-900 opacity-40" size={24} />
         </div>
-              {/* PAINEL DE IMPORTAÇÃO XLSX (SPRINT 1) */}
-      <div className="bg-white p-8 rounded-3xl shadow-sm border-2 border-dashed border-blue-200 mb-8 flex flex-col md:flex-row justify-between items-center gap-6">
-        <div className="flex items-center gap-4">
-          <div className="bg-blue-900 p-3 rounded-2xl text-white">
-            <FileText size={24} />
+
+        <div className="bg-white p-8 rounded-3xl shadow-sm border-2 border-dashed border-blue-200 mb-8 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex items-center gap-4">
+            <div className="bg-blue-900 p-3 rounded-2xl text-white">
+              <FileText size={24} />
+            </div>
+            <div>
+              <h3 className="font-black text-blue-900 uppercase text-sm">Conciliação Bancária Automática</h3>
+              <p className="text-xs text-slate-500 font-bold">Importe o XLSX do Banco do Brasil para o mês de {selectedMonth.split('-').reverse().join('/')}</p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-black text-blue-900 uppercase text-sm">Conciliação Bancária Automática</h3>
-            <p className="text-xs text-slate-500 font-bold">Importe o XLSX do Banco do Brasil para o mês de {selectedMonth.split('-').reverse().join('/')}</p>
-          </div>
+          <label className="cursor-pointer bg-blue-900 text-white px-8 py-3 rounded-xl font-black hover:bg-blue-800 transition-all shadow-lg flex items-center gap-2">
+            {isReadingFile ? <Loader2 className="animate-spin" size={20} /> : <PlusCircle size={20} />}
+            {isReadingFile ? 'LENDO ARQUIVO...' : 'SELECIONAR EXTRATO XLSX'}
+            <input type="file" accept=".xlsx" className="hidden" onChange={(e) => processExcelFile(e.target.files[0])} />
+          </label>
         </div>
-        <label className="cursor-pointer bg-blue-900 text-white px-8 py-3 rounded-xl font-black hover:bg-blue-800 transition-all shadow-lg flex items-center gap-2">
-          {isReadingFile ? <Loader2 className="animate-spin" size={20} /> : <PlusCircle size={20} />}
-          {isReadingFile ? 'LENDO ARQUIVO...' : 'SELECIONAR EXTRATO XLSX'}
-          <input type="file" accept=".xlsx" className="hidden" onChange={(e) => processExcelFile(e.target.files[0])} />
-        </label>
       </div>
-      </div>
-            {/* TABELA DE STAGING - REVISÃO DE IMPORTAÇÃO */}
+
       {stagingMovs.length > 0 && (
         <div className="bg-white p-8 rounded-3xl shadow-xl border-2 border-blue-900 mb-8 animate-in fade-in slide-in-from-top-4">
           <div className="flex justify-between items-center mb-6">
@@ -587,13 +616,11 @@ export default function App() {
             <div className="flex gap-3">
               <button onClick={() => setStagingMovs([])} className="text-slate-400 hover:text-red-500 font-bold text-xs uppercase">Descartar</button>
               <button 
-                onClick={async () => {
-                  // Lógica para salvar em lote no Supabase (Sprint 2)
-                  alert("Iniciando persistência no Supabase...");
-                }}
-                className="bg-emerald-500 text-white px-6 py-2 rounded-xl font-black hover:bg-emerald-600 transition-all shadow-md text-sm"
+                onClick={saveStagingToSupabase}
+                disabled={savingMov}
+                className="bg-emerald-500 text-white px-6 py-2 rounded-xl font-black hover:bg-emerald-600 transition-all shadow-md text-sm flex items-center gap-2"
               >
-                CONFIRMAR E SALVAR TUDO
+                {savingMov ? <Loader2 className="animate-spin" size={16} /> : 'CONFIRMAR E SALVAR TUDO'}
               </button>
             </div>
           </div>
@@ -624,7 +651,7 @@ export default function App() {
                         }}
                       >
                         <option value="">Selecionar...</option>
-                        {CATEGORIAS[movForm.conta].saidas.concat(CATEGORIAS[movForm.conta].entradas).map(cat => (
+                        {(CATEGORIAS[movForm.conta]?.saidas || []).concat(CATEGORIAS[movForm.conta]?.entradas || []).map(cat => (
                           <option key={cat} value={cat}>{cat}</option>
                         ))}
                       </select>
@@ -639,7 +666,7 @@ export default function App() {
           </div>
         </div>
       )}
-      {/* --- FORMULÁRIO DE LANÇAMENTOS MANUAIS --- */}
+
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 mb-8">
         <h3 className="text-lg font-black text-blue-900 uppercase mb-6 flex items-center gap-2">
           <PlusCircle size={20} /> Novo Lançamento Manual
@@ -686,10 +713,10 @@ export default function App() {
             >
               <option value="">Selecione...</option>
               <optgroup label="Entradas">
-                {CATEGORIAS[movForm.conta].entradas.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                {CATEGORIAS[movForm.conta]?.entradas.map(cat => <option key={cat} value={cat}>{cat}</option>)}
               </optgroup>
               <optgroup label="Saídas">
-                {CATEGORIAS[movForm.conta].saidas.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                {CATEGORIAS[movForm.conta]?.saidas.map(cat => <option key={cat} value={cat}>{cat}</option>)}
               </optgroup>
             </select>
           </div>
@@ -722,17 +749,14 @@ export default function App() {
           </div>
         </form>
       </div>
-      {/* Dualidade de Contas: Lado a Lado */}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        
-        {/* COLUNA 1: CONTA MARAGESC */}
         <div className="border-2 border-blue-900 rounded-3xl p-6 bg-white flex flex-col shadow-lg">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-2xl font-black text-blue-900 uppercase tracking-tight">MARAGESC</h3>
             <span className="px-3 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded-full border border-emerald-200">CONTA OPERACIONAL</span>
           </div>
 
-          {/* Mini Dashboard MARAGESC */}
           <div className="grid grid-cols-2 gap-3 mb-8">
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
               <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Anterior</p>
@@ -752,7 +776,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Tabela de Movimentações MARAGESC */}
           <div className="flex-1">
             <p className="text-[10px] font-black text-slate-400 uppercase mb-3 ml-1">Extrato Operacional</p>
             <div className="overflow-hidden rounded-2xl border border-slate-100">
@@ -767,7 +790,7 @@ export default function App() {
                 <tbody className="divide-y divide-slate-50">
                   {movimentacoes.MARAGESC.map(m => (
                     <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-3 text-slate-500 font-bold">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
+                      <td className="p-3 text-slate-500 font-bold">{new Date(m.data_movimento).toLocaleDateString('pt-BR')}</td>
                       <td className="p-3 font-bold text-slate-700">{m.descricao}</td>
                       <td className={`p-3 text-right font-black ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
                         {m.tipo === 'entrada' ? '+' : '-'} R$ {formatCurrency(m.valor)}
@@ -780,14 +803,12 @@ export default function App() {
           </div>
         </div>
 
-        {/* COLUNA 2: CONTA AGESC */}
         <div className="border-2 border-blue-900 rounded-3xl p-6 bg-white flex flex-col shadow-lg">
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-2xl font-black text-blue-900 uppercase tracking-tight">AGESC</h3>
             <span className="px-3 py-1 bg-blue-100 text-blue-700 text-[10px] font-black rounded-full border border-blue-200">CONTA ADMINISTRATIVA</span>
           </div>
 
-          {/* Mini Dashboard AGESC */}
           <div className="grid grid-cols-2 gap-3 mb-8">
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
               <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Anterior</p>
@@ -807,7 +828,6 @@ export default function App() {
             </div>
           </div>
 
-          {/* Tabela de Movimentações AGESC */}
           <div className="flex-1">
             <p className="text-[10px] font-black text-slate-400 uppercase mb-3 ml-1">Extrato Administrativo</p>
             <div className="overflow-hidden rounded-2xl border border-slate-100">
@@ -822,7 +842,7 @@ export default function App() {
                 <tbody className="divide-y divide-slate-50">
                   {movimentacoes.AGESC.map(m => (
                     <tr key={m.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-3 text-slate-500 font-bold">{new Date(m.data).toLocaleDateString('pt-BR')}</td>
+                      <td className="p-3 text-slate-500 font-bold">{new Date(m.data_movimento).toLocaleDateString('pt-BR')}</td>
                       <td className="p-3 font-bold text-slate-700">{m.descricao}</td>
                       <td className={`p-3 text-right font-black ${m.tipo === 'entrada' ? 'text-emerald-600' : 'text-red-500'}`}>
                         {m.tipo === 'entrada' ? '+' : '-'} R$ {formatCurrency(m.valor)}

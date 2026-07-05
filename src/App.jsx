@@ -294,24 +294,48 @@ export default function App() {
       reader.onload = (e) => {
         try {
           const data = new Uint8Array(e.target.result);
-          const workbook = window.XLSX.read(data, { type: 'array' });
+          const workbook = window.XLSX.read(data, { type: 'array', cellDates: true });
           const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-          const jsonData = window.XLSX.utils.sheet_to_json(worksheet);
-
-          if (!jsonData || jsonData.length === 0) {
-            alert("ERRO: O arquivo parece estar vazio ou em formato inválido.");
+          
+          const rows = window.XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          if (!rows || rows.length === 0) {
+            alert("ERRO: O arquivo parece estar vazio.");
             return;
           }
 
+          let headerIndex = rows.findIndex(r => 
+            r.some(cell => cell && typeof cell === 'string' && (cell.includes('Data') || cell.includes('Histórico')))
+          );
+          if (headerIndex === -1) headerIndex = 0;
+
+          const jsonData = window.XLSX.utils.sheet_to_json(worksheet, { range: headerIndex });
           const [year, month] = selectedMonth.split('-');
           
-          const normalized = jsonData.map((row, index) => {
-            const rawDate = row.data || row.Data || row.DATA || row['Data Movimento'] || row.dt_movimento;
-            const rawDesc = row.historico || row.Historico || row.HISTORICO || row.Descrição || row.descricao;
-            const rawValor = row.valor_r_ || row.valor || row.Valor || row.VALOR || row.valor_lancamento;
-            const rawDoc = row.numero_documento || row.documento || row.Documento || row.doc;
+          const normalized = jsonData.filter(row => {
+            const rowStr = JSON.stringify(row);
+            return !rowStr.includes('Extrato Conta Corrente') && !rowStr.includes('Saldos');
+          }).map((row) => {
+            const rawDate = row['Data'] || row['data'] || row['DATA'] || row['Data Movimento'];
+            const rawDesc = row['Histórico/Descrição'] || row['Histórico'] || row['historico'] || row['Descrição'] || row['descricao'];
+            const rawValor = row['Valor'] || row['valor'] || row['VALOR'] || row['valor_r_'];
+            const rawDoc = row['Número do Documento'] || row['documento'] || row['Documento'] || row['doc'];
 
-            const dataMov = rawDate ? new Date(rawDate) : null;
+            let dataMov = null;
+            if (rawDate) {
+              if (rawDate instanceof Date) {
+                dataMov = rawDate;
+              } else if (typeof rawDate === 'number') {
+                dataMov = new Date(Math.round((rawDate - 25569) * 86400 * 1000));
+              } else if (typeof rawDate === 'string') {
+                const parts = rawDate.split('/');
+                if (parts.length === 3) {
+                  dataMov = new Date(parts[2], parts[1] - 1, parts[0]);
+                } else {
+                  dataMov = new Date(rawDate);
+                }
+              }
+            }
+            
             if (!dataMov || isNaN(dataMov.getTime())) return null;
 
             const isSameMonth = dataMov.getFullYear() === parseInt(year) && 
@@ -319,18 +343,25 @@ export default function App() {
 
             if (!isSameMonth) return null;
 
+            let parsedValor = 0;
+            if (typeof rawValor === 'number') {
+              parsedValor = rawValor;
+            } else if (typeof rawValor === 'string') {
+              parsedValor = parseFloat(rawValor.replace(/\\./g, '').replace(',', '.'));
+            }
+
             return {
               data_movimento: dataMov.toISOString().split('T')[0],
               descricao: rawDesc || 'Sem descrição',
-              valor: Math.abs(parseFloat(rawValor) || 0),
-              tipo: (parseFloat(rawValor) < 0) ? 'saida' : 'entrada',
+              valor: Math.abs(parsedValor || 0),
+              tipo: (parsedValor < 0) ? 'saida' : 'entrada',
               documento: (rawDoc || '').toString(),
               categoria: autoCategorize(rawDesc || '', movForm?.conta || 'MARAGESC') 
             };
           }).filter(item => item !== null);
 
           if (normalized.length === 0) {
-            const colunasEncontradas = Object.keys(jsonData[0]).join(', ');
+            const colunasEncontradas = Object.keys(jsonData[0] || {}).join(', ');
             alert(`ERRO DE COMPETÊNCIA:\n\nNão encontramos lançamentos para ${month}/${year}.\n\nColunas detectadas no arquivo: [${colunasEncontradas}]\n\nCertifique-se de que o mês selecionado no sistema é o mesmo do extrato.`);
           } else {
             setStagingMovs(normalized);

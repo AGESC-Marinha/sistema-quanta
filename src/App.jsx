@@ -272,8 +272,8 @@ export default function App() {
             valor: Math.abs(rawValor),
             tipo: (rawValor &lt; 0) ? 'saida' : 'entrada',
             documento: (row.numero_documento || row.Documento || '').toString(),
-            categoria: autoCategorize(row.historico || '', movForm.conta) 
-          };
+            categoria: autoCategorize(row.historico || '', movForm?.conta || 'MARAGESC') 
+          };     
         }).filter(item => item !== null);
 
         if (normalized.length === 0) {

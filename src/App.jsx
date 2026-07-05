@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import * as XLSX from 'xlsx'; 
 import {
   Building2, MapPin, Users, DollarSign, Trash2,
   LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle,

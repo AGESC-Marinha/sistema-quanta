@@ -242,56 +242,76 @@ export default function App() {
     return match ? match.cat : ''; // Retorna a categoria ou vazio para preenchimento manual
   };
     // MOTOR DE CONCILIAÇÃO - PARSER XLSX BB (VERSÃO RESILIENTE)
+    // MOTOR DE CONCILIAÇÃO - PARSER XLSX BB (VERSÃO COM DIAGNÓSTICO)
   const processExcelFile = async (file) => {
     if (!file) return;
+    
+    // 1. Verificação de Segurança: A biblioteca carregou?
+    if (!window.XLSX) {
+      alert("ERRO: A ferramenta de leitura de Excel ainda está sendo carregada. Aguarde 5 segundos e tente novamente.");
+      return;
+    }
+
     setIsReadingFile(true);
     try {
       const reader = new FileReader();
-      reader.onload = async (e) => {
-        const data = new Uint8Array(e.target.result);
-        const workbook = window.XLSX.read(data, { type: 'array' });
-        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = window.XLSX.utils.sheet_to_json(worksheet);
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = window.XLSX.read(data, { type: 'array' });
+          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+          const jsonData = window.XLSX.utils.sheet_to_json(worksheet);
 
-        const [year, month] = selectedMonth.split('-');
-        
-        const normalized = jsonData.map(row => {
-          // Busca a data em colunas comuns (data, Data, DATA, dt_movimento)
-          const rawDate = row.data || row.Data || row.DATA || row.dt_movimento;
-          const dataMov = rawDate ? new Date(rawDate) : null;
+          // DIAGNÓSTICO: O que o sistema leu?
+          if (!jsonData || jsonData.length === 0) {
+            alert("ERRO: O arquivo parece estar vazio ou em formato inválido.");
+            return;
+          }
+
+          const [year, month] = selectedMonth.split('-');
           
-          if (!dataMov || isNaN(dataMov.getTime())) return null;
+          const normalized = jsonData.map((row, index) => {
+            // Busca flexível de colunas
+            const rawDate = row.data || row.Data || row.DATA || row['Data Movimento'] || row.dt_movimento;
+            const rawDesc = row.historico || row.Historico || row.HISTORICO || row.Descrição || row.descricao;
+            const rawValor = row.valor_r_ || row.valor || row.Valor || row.VALOR || row.valor_lancamento;
+            const rawDoc = row.numero_documento || row.documento || row.Documento || row.doc;
 
-          // Validação de Competência
-          const isSameMonth = dataMov.getFullYear() === parseInt(year) && 
-                             (dataMov.getMonth() + 1) === parseInt(month);
+            const dataMov = rawDate ? new Date(rawDate) : null;
+            
+            // Validação de Data
+            if (!dataMov || isNaN(dataMov.getTime())) return null;
 
-          if (!isSameMonth) return null;
+            const isSameMonth = dataMov.getFullYear() === parseInt(year) && 
+                               (dataMov.getMonth() + 1) === parseInt(month);
 
-          // Busca o valor em colunas comuns (valor_r_, Valor, VALOR)
-          const rawValor = row.valor_r_ || row.Valor || row.VALOR || 0;
+            if (!isSameMonth) return null;
 
-          return {
-            data_movimento: dataMov.toISOString().split('T')[0],
-            descricao: row.historico || row.Descrição || row.DESCRICAO || 'Sem descrição',
-            valor: Math.abs(rawValor),
-            tipo: (rawValor &lt; 0) ? 'saida' : 'entrada',
-            documento: (row.numero_documento || row.Documento || '').toString(),
-            categoria: autoCategorize(row.historico || '', movForm?.conta || 'MARAGESC') 
-          };     
-        }).filter(item => item !== null);
+            return {
+              data_movimento: dataMov.toISOString().split('T')[0],
+              descricao: rawDesc || 'Sem descrição',
+              valor: Math.abs(parseFloat(rawValor) || 0),
+              tipo: (parseFloat(rawValor) < 0) ? 'saida' : 'entrada',
+              documento: (rawDoc || '').toString(),
+              categoria: autoCategorize(rawDesc || '', movForm?.conta || 'MARAGESC') 
+            };
+          }).filter(item => item !== null);
 
-        if (normalized.length === 0) {
-          alert(`ERRO DE VALIDAÇÃO:\n\nNão encontramos lançamentos para ${month}/${year} neste arquivo.\n\nVerifique se:\n1. O mês selecionado no sistema coincide com o extrato.\n2. O arquivo XLSX contém a coluna 'data' ou 'Data'.`);
-        } else {
-          setStagingMovs(normalized);
-          // Feedback visual imediato
-          window.scrollTo({ top: 400, behavior: 'smooth' });
+          if (normalized.length === 0) {
+            // Se chegou aqui, o arquivo foi lido, mas as datas não batem
+            const colunasEncontradas = Object.keys(jsonData[0]).join(', ');
+            alert(`ERRO DE COMPETÊNCIA:\n\nNão encontramos lançamentos para ${month}/${year}.\n\nColunas detectadas no arquivo: [${colunasEncontradas}]\n\nCertifique-se de que o mês selecionado no sistema é o mesmo do extrato.`);
+          } else {
+            setStagingMovs(normalized);
+            window.scrollTo({ top: 400, behavior: 'smooth' });
+          }
+        } catch (innerErr) {
+          alert("Erro ao processar dados internos: " + innerErr.message);
         }
       };
       reader.readAsArrayBuffer(file);
     } catch (err) {
-      alert("Erro crítico no Parser: " + err.message);
+      alert("Erro crítico no leitor de arquivos: " + err.message);
     } finally {
       setIsReadingFile(false);
     }

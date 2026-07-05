@@ -90,6 +90,12 @@ export default function App() {
   const [savingMov, setSavingMov] = useState(false);
 // --- FIM DA COLAGEM 2 ---
   useEffect(() => {
+    // Carrega a biblioteca de Excel dinamicamente para evitar erro na Vercel
+    const script = document.createElement('script');
+    script.src = "https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js";
+    script.async = true;
+    document.body.appendChild(script);
+
     fetchCondominios();
     fetchContratos();
     fetchRateios();
@@ -243,9 +249,9 @@ export default function App() {
       const reader = new FileReader();
       reader.onload = async (e) => {
         const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
+        const workbook = window.XLSX.read(data, { type: 'array' });
         const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet);
+        const jsonData = window.XLSX.utils.sheet_to_json(worksheet);
 
         const [year, month] = selectedMonth.split('-');
         

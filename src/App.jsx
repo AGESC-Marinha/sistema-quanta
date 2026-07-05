@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import * as XLSX from 'xlsx'; // <--- ADICIONE ESTA LINHA PARA O EXCEL FUNCIONAR
+import * as XLSX from 'xlsx'; 
 import {
   Building2, MapPin, Users, DollarSign, Trash2,
   LayoutDashboard, Settings, Loader2, PlusCircle, Pencil, XCircle,
   CreditCard, Flame, ArrowUpCircle, ExternalLink, X,
   FileText, Calendar, Percent, Link2, ChevronDown, ChevronRight, 
-  TrendingDown, Info, CheckCircle2, AlertCircle, Loader // <--- ÍCONES ADICIONADOS
+  TrendingDown, Info, CheckCircle2, AlertCircle, Loader
 } from 'lucide-react';
 
 const supabaseUrl = 'https://bjeklbralayvulcuqiqe.supabase.co';

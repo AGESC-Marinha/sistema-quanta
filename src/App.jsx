@@ -176,7 +176,6 @@ export default function App() {
             mes_referencia: selectedMonth + '-01', 
             conta: movForm.conta,
             saldo_inicial: balancetes[movForm.conta].saldo_inicial,
-            status: 'Aberto'
           }])
           .select();
         if (createError) throw createError;
@@ -226,7 +225,6 @@ export default function App() {
             mes_referencia: selectedMonth + '-01',
             conta: movForm.conta,
             saldo_inicial: balancetes[movForm.conta]?.saldo_inicial || 0,
-            status: 'Aberto'
           }])
           .select();
         if (createError) throw createError;

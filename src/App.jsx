@@ -925,7 +925,7 @@ export default function App() {
               <div className="mb-6 p-4 bg-blue-50 rounded-2xl border border-blue-100">
                 <p className="text-sm text-blue-800 font-bold">
                   <TrendingDown size={16} className="inline mr-1" />
-                  Valor Líquido de Repasse = Receita Bruta − Taxa AGESC (4,5%) − Deduções de Contratos (Rateio) + R$ 3,00 (Restituição Boleto - Cortesia)
+                  Valor Líquido de Repasse = Receita Bruta − Taxa AGESC (4,5%) − Deduções de Contratos (Rateio) − (Taxa dos proprietários civis) + R$ 3,00 (Restituição Boleto - Cortesia)
                 </p>
                 <p className="text-xs text-blue-600 mt-1 flex items-center gap-1"><Info size={12}/> O Fundo de Reserva (5%) está incluso no montante total enviado ao condomínio.</p>
               </div>

@@ -315,7 +315,7 @@ export default function App() {
           }).map((row) => {
             const rawDate = row['Data'] || row['data'] || row['DATA'] || row['Data Movimento'];
             const rawInf = row['inf_'] || row['Inf.'] || row['inf'] || row['INF'];
-            const rawDesc = row['Historico'] || row['observacao'] || row['Detalhamento Hist'] || row['Histórico/Descrição'] || row['descricao'] || row['Descrição'];
+            const rawDesc = row['historico'] || row['Historico'] || row['observacao'] || row['detalhamento_hist_'] || row['Detalhamento Hist'] || row['descricao'] || row['Descrição'];
             const valorKey = Object.keys(row).find(k => /valor/i.test(k)) || 'Valor';
             const rawValor = row[valorKey];
             const rawDoc = row['Número do Documento'] || row['documento'] || row['Documento'] || row['doc'];

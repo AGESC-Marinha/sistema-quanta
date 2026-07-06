@@ -965,6 +965,7 @@ export default function App() {
                           <span className="font-bold text-slate-600">R$ {formatCurrency(fundo)} <span className="text-[9px] uppercase ml-1 opacity-70">[Incluso]</span></span>
                         </div>
                         <div className="flex justify-between"><span>− Deduções Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(deducoes)}</span></div>
+                        {deducaoCivil > 0 && <div className="flex justify-between"><span>− Dedução Proprietários Civis</span><span className="font-bold text-red-500">R$ {formatCurrency(deducaoCivil)}</span></div>}
                         <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
                           <span className="font-black text-emerald-700">+ Restituição Boleto (Cortesia)</span>
                           <span className="font-bold text-emerald-700">R$ {formatCurrency(BOLETO_FEE)}</span>

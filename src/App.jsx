@@ -601,7 +601,8 @@ export default function App() {
     const receita = calcularReceita(c);
     const agesc = calcularAGESC(c);
     const deducoes = calcularDeducoesContratos(c.id);
-    return receita - agesc - deducoes + BOLETO_FEE;
+    const deducaoCivil = (Number(c.qtd_civis) || 0) * calcularTaxa(c);
+    return receita - agesc - deducoes - deducaoCivil + BOLETO_FEE;
   };
 
   const formatCurrency = (val) => Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

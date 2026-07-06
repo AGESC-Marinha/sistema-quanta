@@ -137,15 +137,25 @@ export default function App() {
             saldo_final: prev?.saldo_final || 0
           };
         }
-
         let { data: movs, error: err3 } = await supabase
           .from('movimentacoes_extrato')
           .select('*')
           .eq('balancete_id', current?.id || null)
           .order('data_movimento', { ascending: true }).order('id', { ascending: true });
-
         newMovimentacoes[account] = movs || [];
+        // Recalcula entradas, saídas e saldo final a partir das movimentações reais
+        const movsList = movs || [];
+        const totalEntradas = movsList.filter(m => m.tipo === 'entrada').reduce((s, m) => s + Number(m.valor), 0);
+        const totalSaidas = movsList.filter(m => m.tipo === 'saida').reduce((s, m) => s + Number(m.valor), 0);
+        const saldoInicial = current?.saldo_inicial || newBalancetes[account]?.saldo_inicial || 0;
+        newBalancetes[account] = {
+          ...newBalancetes[account],
+          entradas: totalEntradas,
+          saidas: totalSaidas,
+          saldo_final: saldoInicial + totalEntradas - totalSaidas
+        };
       }
+       
       setBalancetes(newBalancetes);
       setMovimentacoes(newMovimentacoes);
     } catch (err) {

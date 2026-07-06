@@ -347,14 +347,11 @@ export default function App() {
             if (typeof rawValor === 'number') {
               parsedValor = rawValor;
             } else if (typeof rawValor === 'string') {
-              parsedValor = parseFloat(rawValor.replace(/\\./g, '').replace(',', '.'));
+              parsedValor = parseFloat(rawValor.replace(/\./g, '').replace(',', '.'));
             }
 
-            return {
-              data_movimento: dataMov.toISOString().split('T')[0],
-              descricao: rawDesc || 'Sem descrição',
-              valor: Math.abs(parsedValor || 0),
-              let tipo;
+            // Determina entrada/saída pela coluna Inf. (C=Crédito, D=Débito)
+            let tipo;
             const infIndicator = rawInf ? rawInf.toString().toUpperCase().trim() : '';
             if (infIndicator === 'C') {
               tipo = 'entrada';
@@ -363,6 +360,12 @@ export default function App() {
             } else {
               tipo = (parsedValor < 0) ? 'saida' : 'entrada';
             }
+
+            return {
+              data_movimento: dataMov.toISOString().split('T')[0],
+              descricao: rawDesc || 'Sem descrição',
+              valor: Math.abs(parsedValor || 0),
+              tipo: tipo,   // ← mudou de (parsedValor < 0) ... para a variável tipo
               documento: (rawDoc || '').toString(),
               categoria: autoCategorize(rawDesc || '', movForm?.conta || 'MARAGESC') 
             };

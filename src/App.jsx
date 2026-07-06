@@ -231,6 +231,8 @@ export default function App() {
         balanceteId = newB[0].id;
       }
 
+      // Limpa registros antigos do mesmo mês/conta antes de reinserir
+      await supabase.from('movimentacoes_extrato').delete().eq('balancete_id', balanceteId);
       const batch = stagingMovs.map(m => ({
         balancete_id: balanceteId,
         data_movimento: m.data_movimento,

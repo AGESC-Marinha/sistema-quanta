@@ -247,7 +247,18 @@ export default function App() {
         .insert(batch);
 
       if (batchError) throw batchError;
-
+      
+      // Recalcula os totais do balancete (entradas, saídas, saldo final)
+      const { data: movsRecalc } = await supabase.from('movimentacoes_extrato').select('tipo,valor').eq('balancete_id', balanceteId);
+      if (movsRecalc) {
+        const totalEntradas = movsRecalc.filter(m => m.tipo === 'entrada').reduce((s, m) => s + Number(m.valor), 0);
+        const totalSaidas = movsRecalc.filter(m => m.tipo === 'saida').reduce((s, m) => s + Number(m.valor), 0);
+        await supabase.from('balancetes_mensais').update({
+          entradas: totalEntradas,
+          saidas: totalSaidas,
+          saldo_final: (balancetes[movForm.conta]?.saldo_inicial || 0) + totalEntradas - totalSaidas
+        }).eq('id', balanceteId);
+      }
       alert(`${stagingMovs.length} lançamentos importados com sucesso!`);
       setStagingMovs([]);
       fetchBalanceteData(null, selectedMonth);

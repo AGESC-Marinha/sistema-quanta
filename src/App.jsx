@@ -317,7 +317,8 @@ export default function App() {
           }).map((row) => {
             const rawDate = row['Data'] || row['data'] || row['DATA'] || row['Data Movimento'];
             const rawDesc = row['Historico'] || row['observacao'] || row['Histórico/Descrição'] || row['descricao'] || row['Descrição'];
-            const rawValor = row['Valor R$'] || row['Valor'] || row['valor'] || row['VALOR'] || row['valor_r_'];
+            const valorKey = Object.keys(row).find(k => /valor/i.test(k)) || 'Valor';
+            const rawValor = row[valorKey];
             const rawDoc = row['Número do Documento'] || row['documento'] || row['Documento'] || row['doc'];
 
             let dataMov = null;

@@ -1187,6 +1187,7 @@ export default function App() {
                     <span className="font-bold text-slate-600">R$ {formatCurrency(calcularFundoReserva(selectedCondo))} <span className="text-[9px] uppercase ml-1 opacity-70">[Incluso no Repasse]</span></span>
                   </div>
                   <div className="flex justify-between"><span className="text-slate-500">− Deduções de Contratos</span><span className="font-bold text-red-500">R$ {formatCurrency(calcularDeducoesContratos(selectedCondo.id))}</span></div>
+                  {(Number(selectedCondo.qtd_civis) || 0) > 0 && <div className="flex justify-between"><span className="text-slate-500">− Dedução Proprietários Civis</span><span className="font-bold text-red-500">R$ {formatCurrency((Number(selectedCondo.qtd_civis) || 0) * calcularTaxa(selectedCondo))}</span></div>}
                   <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-lg px-2 py-1">
                     <span className="font-black text-emerald-700">+ Restituição Boleto</span>
                     <span className="font-bold text-emerald-700">R$ {formatCurrency(BOLETO_FEE)}</span>

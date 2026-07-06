@@ -354,7 +354,15 @@ export default function App() {
               data_movimento: dataMov.toISOString().split('T')[0],
               descricao: rawDesc || 'Sem descrição',
               valor: Math.abs(parsedValor || 0),
-              tipo: (parsedValor < 0) ? 'saida' : 'entrada',
+              let tipo;
+            const infIndicator = rawInf ? rawInf.toString().toUpperCase().trim() : '';
+            if (infIndicator === 'C') {
+              tipo = 'entrada';
+            } else if (infIndicator === 'D') {
+              tipo = 'saida';
+            } else {
+              tipo = (parsedValor < 0) ? 'saida' : 'entrada';
+            }
               documento: (rawDoc || '').toString(),
               categoria: autoCategorize(rawDesc || '', movForm?.conta || 'MARAGESC') 
             };

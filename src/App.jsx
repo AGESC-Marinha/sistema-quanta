@@ -314,7 +314,8 @@ export default function App() {
             return !rowStr.includes('Extrato Conta Corrente') && !rowStr.includes('Saldos');
           }).map((row) => {
             const rawDate = row['Data'] || row['data'] || row['DATA'] || row['Data Movimento'];
-            const rawDesc = row['Historico'] || row['observacao'] || row['Histórico/Descrição'] || row['descricao'] || row['Descrição'];
+            const rawInf = row['Inf.'] || row['inf'] || row['INF'];
+            const rawDesc = row['Historico'] || row['observacao'] || row['Detalhamento Hist'] || row['Histórico/Descrição'] || row['descricao'] || row['Descrição'];
             const valorKey = Object.keys(row).find(k => /valor/i.test(k)) || 'Valor';
             const rawValor = row[valorKey];
             const rawDoc = row['Número do Documento'] || row['documento'] || row['Documento'] || row['doc'];

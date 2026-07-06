@@ -633,7 +633,7 @@ export default function App() {
           <label className="cursor-pointer bg-blue-900 text-white px-8 py-3 rounded-xl font-black hover:bg-blue-800 transition-all shadow-lg flex items-center gap-2">
             {isReadingFile ? <Loader2 className="animate-spin" size={20} /> : <PlusCircle size={20} />}
             {isReadingFile ? 'LENDO ARQUIVO...' : 'SELECIONAR EXTRATO XLSX'}
-            <input type="file" accept=".xlsx" className="hidden" onChange={(e) => processExcelFile(e.target.files[0])} />
+            <input type="file" accept=".xlsx" className="hidden" onChange={(e) => { const file = e.target.files?.[0] || null; processExcelFile(file); e.target.value = ''; }} />
           </label>
         </div>
       </div>

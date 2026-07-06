@@ -936,6 +936,7 @@ export default function App() {
                   const agesc = calcularAGESC(c);
                   const fundo = calcularFundoReserva(c);
                   const deducoes = calcularDeducoesContratos(c.id);
+                  const deducaoCivil = (Number(c.qtd_civis) || 0) * calcularTaxa(c);
                   return (
                     <div key={c.id} onClick={() => setSelectedCondo(c)} className="cursor-pointer bg-white rounded-3xl shadow-sm border border-blue-900 p-6 hover:shadow-xl transition-all group">
                       <div className="flex justify-between items-start mb-4">

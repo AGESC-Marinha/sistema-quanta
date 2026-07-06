@@ -142,7 +142,7 @@ export default function App() {
           .from('movimentacoes_extrato')
           .select('*')
           .eq('balancete_id', current?.id || null)
-          .order('data_movimento', { ascending: true });
+          .order('data_movimento', { ascending: true }).order('id', { ascending: true });
 
         newMovimentacoes[account] = movs || [];
       }

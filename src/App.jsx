@@ -118,13 +118,18 @@ export default function App() {
           .eq('conta', account)
           .maybeSingle();
 
-                // Busca saldo consolidado da tabela saldos_mensais
+                  // Busca saldo consolidado do MÊS ANTERIOR na tabela saldos_mensais
+        const dataAtual = new Date(month + '-01');
+        const dataMesAnterior = new Date(dataAtual);
+        dataMesAnterior.setMonth(dataMesAnterior.getMonth() - 1);
+        const mesAnteriorStr = dataMesAnterior.toISOString().slice(0, 7);
+        
         let { data: saldoMensal } = await supabase
           .from('saldos_mensais')
           .select('*')
-          .eq('mes_referencia', month + '-01')
+          .eq('mes_referencia', mesAnteriorStr + '-01')
           .maybeSingle();
-        
+                
         if (current) {
           newBalancetes[account] = current;
         } else {

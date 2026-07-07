@@ -842,7 +842,8 @@ export default function App() {
           <div className="grid grid-cols-2 gap-3 mb-8">
             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200">
               <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Anterior</p>
-              <p className="text-lg font-black text-slate-700">R$ {formatCurrency(balancetes.MARAGESC.saldo_inicial)}</p>
+              <p className="text-lg font-black text-slate-700">R$ {formatCurrency(balancetes.MARAGESC.saldo_inicial || balancetes.MARAGESC.saldo_consolidado)}{balancetes.MARAGESC.saldo_consolidado > 0 && (
+              <span className="block text-[8px] font-bold text-slate-400 uppercase">CC + RF + Poupança</span>)}</p>
             </div>
             <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
               <p className="text-[10px] font-black text-emerald-600 uppercase">Entradas</p>

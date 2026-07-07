@@ -118,12 +118,12 @@ export default function App() {
           .eq('conta', account)
           .maybeSingle();
 
-                  // Busca saldo consolidado do MÊS ANTERIOR na tabela saldos_mensais
-        const dataAtual = new Date(month + '-01');
-        const dataMesAnterior = new Date(dataAtual);
-        dataMesAnterior.setMonth(dataMesAnterior.getMonth() - 1);
-        const mesAnteriorStr = dataMesAnterior.toISOString().slice(0, 7);
-        
+                  // Calcula mês anterior por string (sem passar por Date, evitando bug de fuso)
+        const [ano, mes] = month.split('-').map(Number);
+        const mesAnteriorCalc = mes === 1 ? 12 : mes - 1;
+        const anoAnteriorCalc = mes === 1 ? ano - 1 : ano;
+        const mesAnteriorStr = `${anoAnteriorCalc}-${String(mesAnteriorCalc).padStart(2, '0')}`;
+
         let { data: saldoMensal } = await supabase
           .from('saldos_mensais')
           .select('*')

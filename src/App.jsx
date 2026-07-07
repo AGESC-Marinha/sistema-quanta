@@ -118,6 +118,13 @@ export default function App() {
           .eq('conta', account)
           .maybeSingle();
 
+                // Busca saldo consolidado da tabela saldos_mensais
+        let { data: saldoMensal } = await supabase
+          .from('saldos_mensais')
+          .select('*')
+          .eq('mes_referencia', month + '-01')
+          .maybeSingle();
+        
         if (current) {
           newBalancetes[account] = current;
         } else {
@@ -129,14 +136,23 @@ export default function App() {
             .order('mes_referencia', { ascending: false })
             .limit(1)
             .maybeSingle();
-
           newBalancetes[account] = {
-            saldo_inicial: prev?.saldo_final || 0,
+            saldo_inicial: account === 'MARAGESC' && saldoMensal?.saldo_consolidado 
+              ? Number(saldoMensal.saldo_consolidado) 
+              : (prev?.saldo_final || 0),
             entradas: 0,
             saidas: 0,
             saldo_final: prev?.saldo_final || 0
           };
         }
+        // Guarda saldo consolidado no estado para usar no saldo_final
+        if (account === 'MARAGESC' && saldoMensal) {
+          newBalancetes[account].saldo_consolidado = Number(saldoMensal.saldo_consolidado);
+          newBalancetes[account].saldo_conta_corrente = Number(saldoMensal.saldo_conta_corrente);
+          newBalancetes[account].saldo_rende_facil = Number(saldoMensal.saldo_rende_facil);
+          newBalancetes[account].saldo_poupanca = Number(saldoMensal.saldo_poupanca);
+        }
+        
         let { data: movs, error: err3 } = await supabase
           .from('movimentacoes_extrato')
           .select('*')

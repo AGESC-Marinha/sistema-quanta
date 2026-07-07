@@ -164,16 +164,36 @@ export default function App() {
           .eq('balancete_id', current?.id || null)
           .order('data_movimento', { ascending: true }).order('id', { ascending: true });
         newMovimentacoes[account] = movs || [];
-        // Recalcula entradas, saídas e saldo final a partir das movimentações reais
+        
+                // Recalcula entradas e saídas a partir das movimentações reais
         const movsList = movs || [];
         const totalEntradas = movsList.filter(m => m.tipo === 'entrada').reduce((s, m) => s + Number(m.valor), 0);
         const totalSaidas = movsList.filter(m => m.tipo === 'saida').reduce((s, m) => s + Number(m.valor), 0);
-        const saldoInicial = current?.saldo_inicial || newBalancetes[account]?.saldo_inicial || 0;
+
+        // Saldo final da MARAGESC usa o consolidado da tabela saldos_mensais (CC + RF + Poupança)
+        // Para AGESC, calcula normalmente
+        let saldoFinal;
+        if (account === 'MARAGESC') {
+          // Busca saldo consolidado do MÊS ATUAL
+          const [anoAtual, mesAtual] = month.split('-').map(Number);
+          const { data: saldoAtualMes } = await supabase
+            .from('saldos_mensais')
+            .select('saldo_consolidado')
+            .eq('mes_referencia', `${anoAtual}-${String(mesAtual).padStart(2, '0')}-01`)
+            .maybeSingle();
+          saldoFinal = saldoAtualMes?.saldo_consolidado 
+            ? Number(saldoAtualMes.saldo_consolidado) 
+            : (totalEntradas - totalSaidas);
+        } else {
+          const saldoInicial = current?.saldo_inicial || newBalancetes[account]?.saldo_inicial || 0;
+          saldoFinal = saldoInicial + totalEntradas - totalSaidas;
+        }
+
         newBalancetes[account] = {
           ...newBalancetes[account],
           entradas: totalEntradas,
           saidas: totalSaidas,
-          saldo_final: saldoInicial + totalEntradas - totalSaidas
+          saldo_final: saldoFinal
         };
       }
        

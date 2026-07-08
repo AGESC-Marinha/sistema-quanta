@@ -897,10 +897,29 @@ export default function App() {
               <p className="text-[10px] font-black text-blue-200 uppercase">Saldo Atual</p>
               <p className="text-lg font-black text-white">R$ {formatCurrency(balancetes.MARAGESC.saldo_final)}</p>
             </div>
-          </div>
+          
+          </div>  {/* ← fecha o grid Saldo Anterior / Entradas / Saídas / Saldo Atual */}
+
+          {/* 🔵 Linha informativa de investimentos — só aparece na MARAGESC */}
+          {(account === 'MARAGESC' && (balancetes.MARAGESC.entradas_investimento > 0 || balancetes.MARAGESC.saidas_investimento > 0)) && (
+            <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-[11px] mt-2">
+              <p className="font-bold text-blue-800 flex items-center gap-1">
+                <Info size={14} /> Movimentação de Investimentos (BB Rende Fácil + Poupança)
+              </p>
+              <div className="flex justify-between mt-1">
+                <span className="text-blue-600">Total resgatado (entradas):</span>
+                <span className="font-bold text-emerald-600">R$ {formatCurrency(balancetes.MARAGESC.entradas_investimento)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-blue-600">Total aplicado (saídas):</span>
+                <span className="font-bold text-red-500">R$ {formatCurrency(balancetes.MARAGESC.saidas_investimento)}</span>
+              </div>
+            </div>
+          )}
 
           <div className="flex-1">
             <p className="text-[10px] font-black text-slate-400 uppercase mb-3 ml-1">Extrato Operacional</p>
+          
             <div className="overflow-hidden rounded-2xl border border-slate-100">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-slate-400 uppercase text-[10px] font-black">

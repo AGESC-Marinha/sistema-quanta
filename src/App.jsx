@@ -166,9 +166,20 @@ export default function App() {
         newMovimentacoes[account] = movs || [];
         
                 // Recalcula entradas e saídas a partir das movimentações reais
+        
         const movsList = movs || [];
-        const totalEntradas = movsList.filter(m => m.tipo === 'entrada').reduce((s, m) => s + Number(m.valor), 0);
-        const totalSaidas = movsList.filter(m => m.tipo === 'saida').reduce((s, m) => s + Number(m.valor), 0);
+        // Filtra movimentações internas de investimento (BB Rende Fácil e Poupança)
+        const isInvestimento = (m) => {
+          const desc = (m.descricao || '').toUpperCase();
+          return /RENDE.?F[AÁ]CIL|TRANSFERIDO.*POUPANCA|APLICA[ÇC][AÃ]O.*POUPANCA/i.test(desc);
+        };
+        // Totais operacionais (exclui investimentos)
+        const totalEntradas = movsList.filter(m => m.tipo === 'entrada' && !isInvestimento(m)).reduce((s, m) => s + Number(m.valor), 0);
+        const totalSaidas = movsList.filter(m => m.tipo === 'saida' && !isInvestimento(m)).reduce((s, m) => s + Number(m.valor), 0);
+        // Totais de investimento (BB Rende Fácil + Poupança)
+        const totalEntradasInv = movsList.filter(m => m.tipo === 'entrada' && isInvestimento(m)).reduce((s, m) => s + Number(m.valor), 0);
+        const totalSaidasInv = movsList.filter(m => m.tipo === 'saida' && isInvestimento(m)).reduce((s, m) => s + Number(m.valor), 0);
+        
 
         // Saldo final da MARAGESC usa o consolidado da tabela saldos_mensais (CC + RF + Poupança)
         // Para AGESC, calcula normalmente

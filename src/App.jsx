@@ -329,6 +329,8 @@ export default function App() {
         { padrao: /ASCON|CONTABIL/i, cat: 'Contabilidade (ASCON)' },
         { padrao: /TAR.*CONTA|DOC.*ELET/i, cat: 'Tarifas Bancárias' },
         { padrao: /REND.*APLIC|JUROS/i, cat: 'Rendimentos' },
+        { padrao: /RENDE.?F[AÁ]CIL/i, cat: 'Rendimentos' },
+        { padrao: /TRANSFERIDO.*POUPANCA|APLICA[ÇC][AÃ]O.*POUPANCA|TRANSFERENCIA.*POUPANCA/i, cat: 'Rendimentos' },
       ],
       AGESC: [
         { padrao: /ALUGUEL.*SEDE/i, cat: 'Aluguel Sede' },

@@ -200,7 +200,7 @@ export default function App() {
             .maybeSingle();
           saldoFinal = saldoAtualMes?.saldo_consolidado 
             ? Number(saldoAtualMes.saldo_consolidado) 
-            : (totalEntradas - totalSaidas);
+            : (Number(newBalancetes[account]?.saldo_inicial || 0) + totalEntradas - totalSaidas);
         } else {
           const saldoInicial = current?.saldo_inicial || newBalancetes[account]?.saldo_inicial || 0;
           saldoFinal = saldoInicial + totalEntradas - totalSaidas;

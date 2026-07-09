@@ -353,6 +353,8 @@ export default function App() {
         { padrao: /NEOENERGIA|CEB/i, cat: 'Empresas Terceirizadas' },
         { padrao: /ASCON|CONTABIL/i, cat: 'Contabilidade (ASCON)' },
         { padrao: /TAR.*CONTA|DOC.*ELET/i, cat: 'Tarifas Bancárias' },
+        { padrao: /IOF/i, cat: 'Tarifas Bancárias' },
+        { padrao: /\bIR\b(?!.*IMPOSTO)/i, cat: 'Tarifas Bancárias' },
         { padrao: /REND.*APLIC|JUROS/i, cat: 'Rendimentos' },
         { padrao: /RENDE.?F[AÁ]CIL/i, cat: 'Rendimentos' },
         { padrao: /TRANSFERIDO.*POUPANCA|APLICA[ÇC][AÃ]O.*POUPANCA|TRANSFERENCIA.*POUPANCA/i, cat: 'Rendimentos' },

@@ -488,9 +488,6 @@ export default function App() {
 
   const processExcelFile = async (file) => {
     if (!file) return;
-  
-  const processExcelFile = async (file) => {
-    if (!file) return;
     if (!window.XLSX) {
       alert("ERRO: A ferramenta de leitura de Excel ainda está sendo carregada. Aguarde 5 segundos e tente novamente.");
       return;

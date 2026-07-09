@@ -210,7 +210,7 @@ export default function App() {
           ...newBalancetes[account],
           entradas: totalEntradas,
           saidas: totalSaidas,
-          saldo_final: saldoFinal
+          saldo_final: saldoFinal,
           entradas_investimento: totalEntradasInv,
           saidas_investimento: totalSaidasInv,
         };

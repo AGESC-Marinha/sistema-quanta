@@ -129,10 +129,16 @@ export default function App() {
           .select('*')
           .eq('mes_referencia', mesAnteriorStr + '-01')
           .maybeSingle();
-                
+
         if (current) {
-          newBalancetes[account] = current;
+          newBalancetes[account] = {
+            ...current,
+            saldo_inicial: account === 'MARAGESC' && saldoMensal?.saldo_consolidado
+              ? Number(saldoMensal.saldo_consolidado)
+              : current.saldo_inicial
+          };
         } else {
+       
           let { data: prev, error: err2 } = await supabase
             .from('balancetes_mensais')
             .select('saldo_final')

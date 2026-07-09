@@ -85,7 +85,13 @@ export default function App() {
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [movForm, setMovForm] = useState(INITIAL_MOV_FORM);
   const [savingMov, setSavingMov] = useState(false);
-
+  const [isReadingRF, setIsReadingRF] = useState(false);
+  const [isReadingPP, setIsReadingPP] = useState(false);
+  const [investimentoData, setInvestimentoData] = useState({
+    rf_rendimentos: 0, rf_iof: 0, rf_ir: 0,
+    pp_saldo: 0
+  });
+  
   useEffect(() => {
     const script = document.createElement('script');
     script.src = "https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js";

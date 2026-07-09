@@ -907,7 +907,7 @@ export default function App() {
           </div>  {/* ← fecha o grid Saldo Anterior / Entradas / Saídas / Saldo Atual */}
 
           {/* 🔵 Linha informativa de investimentos — só aparece na MARAGESC */}
-          {(account === 'MARAGESC' && (balancetes.MARAGESC.entradas_investimento > 0 || balancetes.MARAGESC.saidas_investimento > 0)) && (
+          {(balancetes.MARAGESC.entradas_investimento > 0 || balancetes.MARAGESC.saidas_investimento > 0) && (
             <div className="p-3 bg-blue-50 rounded-xl border border-blue-100 text-[11px] mt-2">
               <p className="font-bold text-blue-800 flex items-center gap-1">
                 <Info size={14} /> Movimentação de Investimentos (BB Rende Fácil + Poupança)

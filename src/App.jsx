@@ -97,7 +97,10 @@ export default function App() {
     script.src = "https://cdn.sheetjs.com/xlsx-0.19.3/package/dist/xlsx.full.min.js";
     script.async = true;
     document.body.appendChild(script);
-
+    const script2 = document.createElement('script');
+    script2.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    script2.async = true;
+    document.body.appendChild(script2);
     fetchCondominios();
     fetchContratos();
     fetchRateios();

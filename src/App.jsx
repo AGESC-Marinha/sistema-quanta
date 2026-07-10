@@ -1083,12 +1083,6 @@ export default function App() {
         <h3 className="text-lg font-black text-blue-900 uppercase mb-6 flex items-center gap-2">
           <PlusCircle size={20} /> Novo Lançamento Manual
         </h3>
-
-
-      <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 mb-8">
-        <h3 className="text-lg font-black text-blue-900 uppercase mb-6 flex items-center gap-2">
-          <PlusCircle size={20} /> Novo Lançamento Manual
-        </h3>
         
         <form onSubmit={handleMovSubmit} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
           <div>

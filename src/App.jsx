@@ -504,6 +504,171 @@ export default function App() {
     }
   };
 
+  const processRendeFacilPDF = async (file) => {
+    if (!file) return;
+    if (!window.pdfjsLib) {
+      alert("A ferramenta de leitura de PDF ainda está carregando. Aguarde 5 segundos e tente novamente.");
+      return;
+    }
+    setIsReadingRF(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        fullText += content.items.map(item => item.str).join(' ') + '\n';
+      }
+
+      // Validação de competência — extrai mês/ano do texto do PDF
+      const [anoRef, mesRef] = selectedMonth.split('-').map(Number);
+      const matchMes = fullText.match(/(\d{2})\/(\d{4})/);
+      if (matchMes) {
+        const mesPDF = parseInt(matchMes[1]);
+        const anoPDF = parseInt(matchMes[2]);
+        if (anoPDF !== anoRef || mesPDF !== mesRef) {
+          alert(`ERRO DE COMPETÊNCIA: O extrato do Rende Fácil é de ${String(mesPDF).padStart(2,'0')}/${anoPDF}, mas o mês selecionado no sistema é ${String(mesRef).padStart(2,'0')}/${anoRef}.`);
+          setIsReadingRF(false);
+          return;
+        }
+      }
+
+      const linhas = fullText.split('\n');
+      let rendimentos = 0, iof = 0, ir = 0;
+
+      linhas.forEach(linha => {
+        const texto = linha.toUpperCase();
+        const matchValor = linha.match(/R?\$?\s*([\d.]+,\d{2})/);
+        if (!matchValor) return;
+        const valor = parseFloat(matchValor[1].replace(/\./g, '').replace(',', '.'));
+        if (/RENDIMENTO/.test(texto) && !/SALDO/.test(texto)) rendimentos = valor;
+        if (/^(?!.*SALDO).*IOF/i.test(texto)) iof = valor;
+        if (/\bIR\b|IRRF/.test(texto) && !/IMPOSTO/i.test(texto) && !/SALDO/.test(texto)) ir = valor;
+      });
+
+      if (rendimentos === 0 && iof === 0 && ir === 0) {
+        alert('Nenhum valor de Rendimentos, IOF ou IR encontrado no PDF. Verifique se é o extrato correto do Rende Fácil.');
+        setIsReadingRF(false);
+        return;
+      }
+
+      // Salva no Supabase
+      const { data: balancete } = await supabase
+        .from('balancetes_mensais')
+        .select('id')
+        .eq('mes_referencia', selectedMonth + '-01')
+        .eq('conta', 'MARAGESC')
+        .maybeSingle();
+
+      if (!balancete?.id) {
+        alert('Primeiro importe e confirme o extrato da Conta Corrente do mês.');
+        setIsReadingRF(false);
+        return;
+      }
+
+      // Remove lançamentos anteriores de RF deste mês para evitar duplicidade
+      await supabase.from('movimentacoes_extrato').delete()
+        .eq('balancete_id', balancete.id)
+        .eq('categoria', 'Rendimentos')
+        .like('descricao', '%Rende Fácil%');
+      await supabase.from('movimentacoes_extrato').delete()
+        .eq('balancete_id', balancete.id)
+        .eq('categoria', 'Tarifas Bancárias')
+        .or('descricao.ilike.%IOF%,descricao.ilike.%IRRF%');
+
+      if (rendimentos > 0) {
+        await supabase.from('movimentacoes_extrato').insert({
+          balancete_id: balancete.id, data_movimento: selectedMonth + '-28',
+          descricao: 'Rendimentos (BB Rende Fácil)', categoria: 'Rendimentos',
+          tipo: 'entrada', valor: rendimentos
+        });
+      }
+      if (iof > 0) {
+        await supabase.from('movimentacoes_extrato').insert({
+          balancete_id: balancete.id, data_movimento: selectedMonth + '-28',
+          descricao: 'IOF s/ Operações Financeiras', categoria: 'Tarifas Bancárias',
+          tipo: 'saida', valor: iof
+        });
+      }
+      if (ir > 0) {
+        await supabase.from('movimentacoes_extrato').insert({
+          balancete_id: balancete.id, data_movimento: selectedMonth + '-28',
+          descricao: 'IRRF s/ Rendimentos', categoria: 'Tarifas Bancárias',
+          tipo: 'saida', valor: ir
+        });
+      }
+
+      setInvestimentoData(prev => ({ ...prev, rf_rendimentos: rendimentos, rf_iof: iof, rf_ir: ir }));
+      alert(`Rende Fácil processado!\nRendimentos: R$ ${rendimentos.toFixed(2)}\nIOF: R$ ${iof.toFixed(2)}\nIR: R$ ${ir.toFixed(2)}`);
+      fetchBalanceteData(null, selectedMonth);
+    } catch (err) {
+      alert('Erro ao ler PDF do Rende Fácil: ' + err.message);
+    } finally {
+      setIsReadingRF(false);
+    }
+  };
+
+  const processPoupancaPDF = async (file) => {
+    if (!file) return;
+    if (!window.pdfjsLib) {
+      alert("A ferramenta de leitura de PDF ainda está carregando. Aguarde 5 segundos e tente novamente.");
+      return;
+    }
+    setIsReadingPP(true);
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        fullText += content.items.map(item => item.str).join(' ') + '\n';
+      }
+
+      // Validação de competência
+      const [anoRef, mesRef] = selectedMonth.split('-').map(Number);
+      const matchMes = fullText.match(/(\d{2})\/(\d{4})/);
+      if (matchMes) {
+        const mesPDF = parseInt(matchMes[1]);
+        const anoPDF = parseInt(matchMes[2]);
+        if (anoPDF !== anoRef || mesPDF !== mesRef) {
+          alert(`ERRO DE COMPETÊNCIA: O extrato da Poupança é de ${String(mesPDF).padStart(2,'0')}/${anoPDF}, mas o mês selecionado é ${String(mesRef).padStart(2,'0')}/${anoRef}.`);
+          setIsReadingPP(false);
+          return;
+        }
+      }
+
+      // Extrai o saldo final da poupança
+      const linhas = fullText.split('\n');
+      let saldoFinal = 0;
+      linhas.forEach(linha => {
+        const texto = linha.toUpperCase();
+        if (/SALDO/.test(texto)) {
+          const matchValor = linha.match(/R?\$?\s*([\d.]+,\d{2})/);
+          if (matchValor) {
+            const val = parseFloat(matchValor[1].replace(/\./g, '').replace(',', '.'));
+            if (val > saldoFinal) saldoFinal = val;
+          }
+        }
+      });
+
+      if (saldoFinal === 0) {
+        alert('Não foi possível identificar o saldo final no PDF da Poupança.');
+        setIsReadingPP(false);
+        return;
+      }
+
+      setInvestimentoData(prev => ({ ...prev, pp_saldo: saldoFinal }));
+      alert(`Poupança processada!\nSaldo final informado: R$ ${saldoFinal.toFixed(2)}`);
+    } catch (err) {
+      alert('Erro ao ler PDF da Poupança: ' + err.message);
+    } finally {
+      setIsReadingPP(false);
+    }
+  };
+
+  
   const processExcelFile = async (file) => {
     if (!file) return;
     if (!window.XLSX) {

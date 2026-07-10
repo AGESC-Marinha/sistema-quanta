@@ -185,10 +185,15 @@ export default function App() {
         
         const movsList = movs || [];
         // Filtra movimentações internas de investimento (BB Rende Fácil e Poupança)
+        
         const isInvestimento = (m) => {
           const desc = (m.descricao || '').toUpperCase();
-          return /RENDE.?F[AÁ]CIL|TRANSFERIDO.*POUPANCA|APLICA[ÇC][AÃ]O.*POUPANCA/i.test(desc);
+          // Exclui do operacional apenas movimentações GROSS de RF (aplicações e resgates)
+          // NÃO exclui "Rendimentos" que é o ganho líquido
+          return /RENDE.?F[AÁ]CIL/i.test(desc) && !/RENDIMENTO/i.test(desc)
+            || /TRANSFERIDO.*POUPANCA|APLICA[ÇC][AÃ]O.*POUPANCA|TRANSFERENCIA.*POUPANCA/i.test(desc);
         };
+        
         // Totais operacionais (exclui investimentos)
         const totalEntradas = movsList.filter(m => m.tipo === 'entrada' && !isInvestimento(m)).reduce((s, m) => s + Number(m.valor), 0);
         const totalSaidas = movsList.filter(m => m.tipo === 'saida' && !isInvestimento(m)).reduce((s, m) => s + Number(m.valor), 0);

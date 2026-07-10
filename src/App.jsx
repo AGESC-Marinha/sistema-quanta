@@ -85,6 +85,7 @@ export default function App() {
   const [isReadingFile, setIsReadingFile] = useState(false);
   const [movForm, setMovForm] = useState(INITIAL_MOV_FORM);
   const [savingMov, setSavingMov] = useState(false);
+  const [showInvestimentoUpload, setShowInvestimentoUpload] = useState(false);
   const [isReadingRF, setIsReadingRF] = useState(false);
   const [isReadingPP, setIsReadingPP] = useState(false);
   const [investimentoData, setInvestimentoData] = useState({

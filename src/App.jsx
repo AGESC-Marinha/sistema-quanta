@@ -1193,10 +1193,101 @@ export default function App() {
         </div>
       )}
 
+      {/* Seção de Upload de Investimentos — aparece após CC confirmada */}
+      {showInvestimentoUpload && (
+        <div className="bg-white p-8 rounded-3xl shadow-2xl border-2 border-emerald-900 mb-8 animate-in fade-in slide-in-from-top-4">
+          <div className="flex items-center gap-4 mb-6">
+            <div className="bg-emerald-900 p-3 rounded-2xl text-white">
+              <TrendingDown size={24} />
+            </div>
+            <div>
+              <h3 className="text-lg font-black text-emerald-900 uppercase">
+                Investimentos do Mês
+              </h3>
+              <p className="text-xs text-slate-500 font-bold">
+                Faça upload dos extratos para capturar Rendimentos, IOF e IR automaticamente
+              </p>
+            </div>
+          </div>
+
+          {/* BB Rende Fácil */}
+          <div className="border-2 border-dashed border-blue-200 rounded-2xl p-6 mb-4 hover:bg-blue-50/30 transition-colors">
+            <div className="flex justify-between items-center">
+              <div className="flex-1">
+                <p className="font-black text-blue-900 text-sm">BB Rende Fácil</p>
+                <p className="text-xs text-slate-400 font-bold mt-1">
+                  Selecione o PDF de extrato do Rende Fácil do mesmo mês de referência
+                </p>
+              </div>
+              <label className="cursor-pointer bg-blue-900 text-white px-6 py-3 rounded-xl font-black hover:bg-blue-800 transition-all shadow-lg flex items-center gap-2 shrink-0">
+                {isReadingRF ? <Loader2 className="animate-spin" size={18} /> : <PlusCircle size={18} />}
+                {isReadingRF ? 'LENDO PDF...' : 'SELECIONAR PDF'}
+                <input type="file" accept=".pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) processRendeFacilPDF(f); e.target.value = ''; }} />
+              </label>
+            </div>
+            {investimentoData.rf_rendimentos > 0 && (
+              <div className="mt-4 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                <p className="text-xs font-black text-emerald-700 uppercase mb-2">Rende Fácil já processado</p>
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div><span className="text-slate-500">Rendimentos:</span> <span className="font-black text-emerald-600">R$ {formatCurrency(investimentoData.rf_rendimentos)}</span></div>
+                  <div><span className="text-slate-500">IOF:</span> <span className="font-black text-red-500">R$ {formatCurrency(investimentoData.rf_iof)}</span></div>
+                  <div><span className="text-slate-500">IR:</span> <span className="font-black text-red-500">R$ {formatCurrency(investimentoData.rf_ir)}</span></div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Poupança */}
+          <div className="border-2 border-dashed border-blue-200 rounded-2xl p-6 mb-4 hover:bg-blue-50/30 transition-colors">
+            <div className="flex justify-between items-center">
+              <div className="flex-1">
+                <p className="font-black text-blue-900 text-sm">Poupança / Outros Investimentos</p>
+                <p className="text-xs text-slate-400 font-bold mt-1">
+                  Selecione o PDF de extrato da Poupança do mesmo mês de referência
+                </p>
+              </div>
+              <label className="cursor-pointer bg-blue-900 text-white px-6 py-3 rounded-xl font-black hover:bg-blue-800 transition-all shadow-lg flex items-center gap-2 shrink-0">
+                {isReadingPP ? <Loader2 className="animate-spin" size={18} /> : <PlusCircle size={18} />}
+                {isReadingPP ? 'LENDO PDF...' : 'SELECIONAR PDF'}
+                <input type="file" accept=".pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0] || null; if (f) processPoupancaPDF(f); e.target.value = ''; }} />
+              </label>
+            </div>
+            {investimentoData.pp_saldo > 0 && (
+              <div className="mt-4 p-4 bg-emerald-50 rounded-xl border border-emerald-200">
+                <p className="text-xs font-black text-emerald-700 uppercase mb-2">Poupança já processada</p>
+                <div className="text-sm"><span className="text-slate-500">Saldo informado:</span> <span className="font-black text-blue-700">R$ {formatCurrency(investimentoData.pp_saldo)}</span></div>
+              </div>
+            )}
+          </div>
+
+          {/* Resumo dos totais */}
+          <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100 mt-2">
+            <p className="text-[10px] font-black text-blue-800 uppercase mb-2">Movimentação via Conta Corrente (já contabilizada)</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[13px]">
+              <div className="flex justify-between bg-white p-2 rounded-lg">
+                <span className="text-blue-600 font-bold">Total resgatado do RF:</span>
+                <span className="font-black text-emerald-600">R$ {formatCurrency(balancetes.MARAGESC.entradas_investimento)}</span>
+              </div>
+              <div className="flex justify-between bg-white p-2 rounded-lg">
+                <span className="text-blue-600 font-bold">Total aplicado no RF:</span>
+                <span className="font-black text-red-500">R$ {formatCurrency(balancetes.MARAGESC.saidas_investimento)}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 mb-8">
         <h3 className="text-lg font-black text-blue-900 uppercase mb-6 flex items-center gap-2">
           <PlusCircle size={20} /> Novo Lançamento Manual
         </h3>
+
+
+      <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 mb-8">
+        <h3 className="text-lg font-black text-blue-900 uppercase mb-6 flex items-center gap-2">
+          <PlusCircle size={20} /> Novo Lançamento Manual
+        </h3>
+        
         <form onSubmit={handleMovSubmit} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
           <div>
             <label className="text-[10px] font-black text-slate-400 uppercase ml-1">Conta</label>

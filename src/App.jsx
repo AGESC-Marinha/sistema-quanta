@@ -351,10 +351,11 @@ export default function App() {
         }).eq('id', balanceteId);
       }
       
-      
       alert(`${stagingMovs.length} lançamentos importados com sucesso!`);
       setStagingMovs([]);
+      setShowInvestimentoUpload(true);
       fetchBalanceteData(null, selectedMonth);
+      
     } catch (err) {
       alert('Erro na persistência em lote: ' + err.message);
     } finally {

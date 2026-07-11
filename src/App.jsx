@@ -1075,7 +1075,6 @@ export default function App() {
               </div>
             </div>
           </div>
-        </div>
       )}
 
       <div className="bg-white p-8 rounded-3xl shadow-sm border border-blue-900 mb-8">
